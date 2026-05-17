@@ -79,11 +79,41 @@ export default function SecurityOperationsPage({ defaultTab = "sessions" }: { de
       </div>
 
       {tab === "sessions" && (
+        <>
+        {can("sessions.revoke") && (
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  const r = await securityApi.revokeOtherSessions();
+                  setMsg(`Revoked ${r.revoked} other session(s)`);
+                  loadSessions();
+                }}
+              >
+                Revoke all other sessions
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  await securityApi.revokeCurrentSession();
+                  localStorage.clear();
+                  window.location.href = "/login";
+                }}
+              >
+                Sign out this session only
+              </button>
+            </div>
+          </div>
+        )}
         <div className="card">
           <table className="data-table">
             <thead>
               <tr>
                 <th>User</th>
+                <th>Status</th>
                 <th>IP</th>
                 <th>User agent</th>
                 <th>Created</th>
@@ -95,6 +125,13 @@ export default function SecurityOperationsPage({ defaultTab = "sessions" }: { de
               {sessions.map((s) => (
                 <tr key={s.id}>
                   <td>{s.username}</td>
+                  <td>
+                    {s.is_current ? (
+                      <span className="badge ok">Current</span>
+                    ) : (
+                      <span className="badge">{s.status || "active"}</span>
+                    )}
+                  </td>
                   <td>{s.ip_address || "-"}</td>
                   <td style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{s.user_agent || "-"}</td>
                   <td>{s.created_at ? new Date(s.created_at).toLocaleString() : "-"}</td>
@@ -139,6 +176,7 @@ export default function SecurityOperationsPage({ defaultTab = "sessions" }: { de
             </div>
           )}
         </div>
+        </>
       )}
 
       {tab === "attempts" && (
@@ -180,7 +218,7 @@ export default function SecurityOperationsPage({ defaultTab = "sessions" }: { de
                           onClick={async () => {
                             const u = users.find((x) => x.username === a.username);
                             if (!u) {
-                              setMsg("User not in list ??unlock from Users page");
+                              setMsg("User not in list ? unlock from Users page");
                               return;
                             }
                             await securityApi.unlockUser(u.id);

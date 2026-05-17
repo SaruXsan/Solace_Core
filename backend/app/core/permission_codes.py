@@ -48,6 +48,7 @@ FOUNDATION_PERMISSIONS: list[tuple[str, str, str | None]] = [
     ("ldap.sync", "LDAP Directory Sync", "core"),
     ("mfa.manage", "Manage User MFA State", "core"),
     ("smtp.test", "Test SMTP Email", "core"),
+    ("security.readiness", "View Security Readiness Report", "core"),
 ]
 
 ALL_PERMISSION_CODES: frozenset[str] = frozenset(c for c, _, _ in FOUNDATION_PERMISSIONS)
@@ -80,6 +81,7 @@ SECURITY_ADMIN_PERMISSIONS: frozenset[str] = READ_ONLY_PERMISSIONS | frozenset(
         "sessions.read",
         "sessions.revoke",
         "login_attempts.read",
+        "security.readiness",
     }
 )
 

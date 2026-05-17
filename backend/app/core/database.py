@@ -23,6 +23,15 @@ _SessionLocal: sessionmaker[Session] | None = None
 
 def init_engine(connection_url: str, echo: bool = False) -> Engine:
     global _engine, _SessionLocal
+    lower = connection_url.lower()
+    if "sqlite" in lower:
+        raise RuntimeError(
+            "SQLite is not supported. Configure SQL Server (mssql+pyodbc) only."
+        )
+    if "mssql" not in lower and "pyodbc" not in lower:
+        raise RuntimeError(
+            "Only SQL Server via ODBC is supported. Check bootstrap connection URL."
+        )
     _engine = create_engine(
         connection_url,
         echo=echo,

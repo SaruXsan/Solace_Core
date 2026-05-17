@@ -13,6 +13,7 @@ export const ROUTE_PERMISSIONS: Record<string, RoutePermissionRule> = {
   "/security/mfa": "mfa.read",
   "/security/sessions": "sessions.read",
   "/security/login-attempts": "login_attempts.read",
+  "/security/readiness": "security.readiness",
   "/solace/ai-providers": "ai_providers.read",
   "/solace/memory": "memory.read",
   "/solace/personas": "personas.read",

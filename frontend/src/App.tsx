@@ -20,6 +20,7 @@ import SolaceRemPage from "./pages/SolaceRemPage";
 import AiProvidersPage from "./pages/AiProvidersPage";
 import RedactionPage from "./pages/RedactionPage";
 import SecurityOperationsPage from "./pages/SecurityOperationsPage";
+import SecurityReadinessPage from "./pages/SecurityReadinessPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/security/mfa" element={<SettingsRedirectPage />} />
           <Route path="/security/sessions" element={<SecurityOperationsPage defaultTab="sessions" />} />
           <Route path="/security/login-attempts" element={<SecurityOperationsPage defaultTab="attempts" />} />
+          <Route path="/security/readiness" element={<SecurityReadinessPage />} />
           <Route path="/solace/ai-providers" element={<AiProvidersPage />} />
           <Route path="/solace/memory" element={<SolaceMemoryPage />} />
           <Route path="/solace/personas" element={<SolacePersonasPage />} />

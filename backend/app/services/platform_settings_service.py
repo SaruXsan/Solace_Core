@@ -189,6 +189,7 @@ def test_smtp_email(
             )
         return {"success": True, "message": f"Test email sent to {to_address}"}
     except Exception as exc:
+        safe = _classify_smtp_error(exc)
         logger.warning("SMTP test failed", extra={"error_type": type(exc).__name__})
         if actor_id:
             audit_service.log_audit(
@@ -196,9 +197,25 @@ def test_smtp_email(
                 "smtp",
                 "test_email_failed",
                 actor_user_id=actor_id,
-                detail={"error": type(exc).__name__},
+                detail={"error_type": type(exc).__name__, "category": safe},
             )
-        return {"success": False, "message": str(exc)[:200]}
+        return {"success": False, "message": safe}
+
+
+def _classify_smtp_error(exc: Exception) -> str:
+    msg = str(exc).lower()
+    name = type(exc).__name__.lower()
+    if "authentication" in msg or "535" in msg or "credential" in msg:
+        return "SMTP authentication failed. Check username and password."
+    if "connection refused" in msg or "10061" in msg or "network" in msg:
+        return "Cannot connect to SMTP host. Check host, port, and firewall."
+    if "timed out" in msg or "timeout" in name:
+        return "SMTP connection timed out."
+    if "starttls" in msg or "tls" in msg or "ssl" in msg:
+        return "TLS/STARTTLS negotiation failed. Verify SMTP TLS settings."
+    if "recipient" in msg or "550" in msg or "553" in msg:
+        return "Invalid sender or recipient address."
+    return "SMTP delivery failed. Verify configuration (details not logged)."
 
 
 def apply_security_settings_to_runtime(db: Session) -> None:

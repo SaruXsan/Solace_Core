@@ -8,9 +8,17 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import client_ip, get_configured_db, get_current_user, require_permission
+from app.api.deps import bearer_scheme, client_ip, get_configured_db, get_current_user, require_permission
+from app.core.exceptions import SolaceHTTPException
+from app.core.security import decode_access_token
 from app.models.platform import CoreUser
-from app.services import login_attempt_service, mfa_admin_service, session_service
+from app.services import (
+    ldap_diagnostics_service,
+    login_attempt_service,
+    mfa_admin_service,
+    security_readiness_service,
+    session_service,
+)
 
 router = APIRouter(prefix="/security", tags=["security"])
 
@@ -24,14 +32,58 @@ class UnlockUserIn(BaseModel):
     user_id: uuid.UUID
 
 
+def _current_jti(creds=Depends(bearer_scheme)) -> str | None:
+    if creds and creds.credentials:
+        try:
+            return decode_access_token(creds.credentials).get("jti")
+        except ValueError:
+            return None
+    return None
+
+
+@router.get("/readiness")
+def security_readiness(
+    db: Session = Depends(get_configured_db),
+    _user: CoreUser = Depends(require_permission("security.readiness")),
+):
+    return security_readiness_service.get_security_readiness(db)
+
+
+@router.get("/break-glass-users")
+def break_glass_users(
+    db: Session = Depends(get_configured_db),
+    _user: CoreUser = Depends(require_permission("security.readiness")),
+):
+    return security_readiness_service.get_break_glass_users(db)
+
+
+@router.post("/ldap/diagnostics")
+def ldap_diagnostics(
+    body: dict | None = None,
+    db: Session = Depends(get_configured_db),
+    admin: CoreUser = Depends(require_permission("ldap.test")),
+):
+    body = body or {}
+    result = ldap_diagnostics_service.run_diagnostics(
+        db,
+        test_username=body.get("test_username"),
+        actor_id=admin.id,
+    )
+    db.commit()
+    return result
+
+
 @router.get("/sessions")
 def list_sessions(
     user_id: uuid.UUID | None = None,
     username: str | None = None,
     db: Session = Depends(get_configured_db),
     _user: CoreUser = Depends(require_permission("sessions.read")),
+    current_jti: str | None = Depends(_current_jti),
 ):
-    return session_service.list_active_sessions(db, user_id=user_id, username=username)
+    return session_service.list_active_sessions(
+        db, user_id=user_id, username=username, current_jti=current_jti
+    )
 
 
 @router.post("/sessions/{session_id}/revoke")
@@ -52,6 +104,32 @@ def revoke_all_sessions(
     admin: CoreUser = Depends(require_permission("sessions.revoke")),
 ):
     count = session_service.revoke_all_sessions_for_user(db, user_id, admin.id)
+    db.commit()
+    return {"success": True, "revoked": count}
+
+
+@router.post("/sessions/revoke-current")
+def revoke_current_session(
+    db: Session = Depends(get_configured_db),
+    user: CoreUser = Depends(require_permission("sessions.revoke")),
+    jti: str | None = Depends(_current_jti),
+):
+    if not jti:
+        raise SolaceHTTPException(400, "No session token", code="NO_SESSION")
+    session_service.revoke_current_session(db, jti, user.id)
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/sessions/revoke-others")
+def revoke_other_sessions(
+    db: Session = Depends(get_configured_db),
+    user: CoreUser = Depends(require_permission("sessions.revoke")),
+    jti: str | None = Depends(_current_jti),
+):
+    if not jti:
+        raise SolaceHTTPException(400, "No session token", code="NO_SESSION")
+    count = session_service.revoke_other_sessions(db, user.id, user.id, jti)
     db.commit()
     return {"success": True, "revoked": count}
 

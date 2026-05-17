@@ -14,7 +14,7 @@ sys.path.insert(0, str(BACKEND))
 import foundation_acceptance_check as fac  # noqa: E402
 
 fac.EXPECTED_HEAD = "004_phase2a_security_directory"
-fac.EXPECTED_PERMISSIONS = 43
+fac.EXPECTED_PERMISSIONS = 44
 
 def record(name: str, ok: bool, detail: str = "") -> None:
     fac.record(name, ok, detail)

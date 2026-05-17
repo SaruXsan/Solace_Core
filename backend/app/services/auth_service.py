@@ -31,23 +31,9 @@ def check_account_locked(user: CoreUser) -> None:
         raise AccountLockedException(user.locked_until.isoformat())
 
 
-def record_failed_login(
-    db: Session,
-    user: CoreUser | None,
-    username: str,
-    ip: str | None,
-    auth_source: str = "local",
-) -> None:
-    db.add(
-        CoreLoginAttempt(
-            username=username,
-            ip_address=ip,
-            success=False,
-            auth_source=auth_source,
-            failure_reason="invalid_credentials",
-        )
-    )
-    if user is None:
+def _apply_local_lockout(db: Session, user: CoreUser, ip: str | None) -> None:
+    """Solace-side lockout only — does not lock external directory accounts."""
+    if user.is_directory_user and not user.password_hash:
         return
     user.failed_login_count = (user.failed_login_count or 0) + 1
     if user.failed_login_count >= settings.login_max_attempts:
@@ -64,6 +50,39 @@ def record_failed_login(
         )
 
 
+def record_failed_login(
+    db: Session,
+    user: CoreUser | None,
+    username: str,
+    ip: str | None,
+    *,
+    auth_source: str = "local",
+    failure_reason: str = "invalid_credentials",
+    audit_username: str | None = None,
+) -> None:
+    db.add(
+        CoreLoginAttempt(
+            username=username,
+            ip_address=ip,
+            success=False,
+            auth_source=auth_source,
+            failure_reason=failure_reason,
+        )
+    )
+    audit_service.log_login(
+        db,
+        audit_username or username,
+        auth_source,
+        False,
+        user_id=user.id if user else None,
+        failure_reason=failure_reason,
+        ip_address=ip,
+    )
+    if user is None:
+        return
+    _apply_local_lockout(db, user, ip)
+
+
 def authenticate_local(
     db: Session,
     username: str,
@@ -78,24 +97,16 @@ def authenticate_local(
         )
     )
     if user is None:
-        record_failed_login(db, None, username, ip_address)
-        audit_service.log_login(
-            db, username, "local", False, failure_reason="user_not_found", ip_address=ip_address
+        record_failed_login(
+            db, None, username, ip_address, auth_source="local", failure_reason="user_not_found"
         )
         raise SolaceHTTPException(401, "Invalid username or password", code="AUTH_FAILED")
 
     check_account_locked(user)
 
     if not user.password_hash or not verify_password(password, user.password_hash):
-        record_failed_login(db, user, username, ip_address)
-        audit_service.log_login(
-            db,
-            username,
-            "local",
-            False,
-            user_id=user.id,
-            failure_reason="bad_password",
-            ip_address=ip_address,
+        record_failed_login(
+            db, user, username, ip_address, auth_source="local", failure_reason="bad_password"
         )
         raise SolaceHTTPException(401, "Invalid username or password", code="AUTH_FAILED")
 
@@ -133,7 +144,9 @@ def authenticate_user(
             pass
 
     dir_row = ldap_service.get_directory_settings(db)
+    auth_src_label = "LDAP"
     if dir_row and dir_row.directory_enabled:
+        auth_src_label = ldap_service._auth_source_label(dir_row)
         attrs = ldap_service.authenticate_directory_user(db, username, password)
         if attrs:
             auth_src = attrs.get("auth_source", "LDAP")
@@ -172,10 +185,27 @@ def authenticate_user(
             )
             return user
 
-    if user is None:
-        record_failed_login(db, None, username, ip_address)
-        audit_service.log_login(
-            db, username, "local", False, failure_reason="user_not_found", ip_address=ip_address
+        if user is not None:
+            record_failed_login(
+                db,
+                user,
+                username,
+                ip_address,
+                auth_source=auth_src_label,
+                failure_reason="directory_auth_failed",
+            )
+        else:
+            record_failed_login(
+                db,
+                None,
+                username,
+                ip_address,
+                auth_source=auth_src_label,
+                failure_reason="user_not_found",
+            )
+    elif user is None:
+        record_failed_login(
+            db, None, username, ip_address, auth_source="local", failure_reason="user_not_found"
         )
     raise SolaceHTTPException(401, "Invalid username or password", code="AUTH_FAILED")
 

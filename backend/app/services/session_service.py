@@ -22,6 +22,7 @@ def list_active_sessions(
     *,
     user_id: uuid.UUID | None = None,
     username: str | None = None,
+    current_jti: str | None = None,
     limit: int = 200,
 ) -> list[dict]:
     q = (
@@ -49,10 +50,33 @@ def list_active_sessions(
             "user_agent": sess.user_agent,
             "created_at": sess.created_at.isoformat() if sess.created_at else None,
             "expires_at": sess.expires_at.isoformat(),
-            "is_current": False,
+            "is_current": bool(current_jti and sess.token_jti == current_jti),
+            "status": "active",
         }
         for sess, uname, dname in rows
     ]
+
+
+def revoke_other_sessions(
+    db: Session, user_id: uuid.UUID, admin_id: uuid.UUID, current_jti: str
+) -> int:
+    return revoke_all_sessions_for_user(
+        db, user_id, admin_id, except_jti=current_jti
+    )
+
+
+def revoke_current_session(db: Session, jti: str, user_id: uuid.UUID) -> None:
+    sess = db.scalar(select(CoreSession).where(CoreSession.token_jti == jti))
+    if sess and not sess.revoked_at:
+        sess.revoked_at = _utcnow()
+        audit_service.log_audit(
+            db,
+            "auth",
+            "session_revoke_current",
+            actor_user_id=user_id,
+            resource_type="session",
+            resource_id=str(sess.id),
+        )
 
 
 def revoke_session(db: Session, session_id: uuid.UUID, admin_id: uuid.UUID) -> None:

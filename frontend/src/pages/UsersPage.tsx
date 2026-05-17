@@ -23,6 +23,7 @@ export default function UsersPage() {
   const [form, setForm] = useState<UserInput & { id?: string; is_active?: boolean }>(emptyUser);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [breakGlass, setBreakGlass] = useState<{ id: string; username: string }[]>([]);
 
   async function load() {
     try {
@@ -35,6 +36,9 @@ export default function UsersPage() {
 
   useEffect(() => {
     load();
+    if (can("security.readiness")) {
+      securityApi.breakGlassUsers().then(setBreakGlass).catch(() => setBreakGlass([]));
+    }
   }, []);
 
   function openCreate() {
@@ -98,6 +102,16 @@ export default function UsersPage() {
       </div>
       {msg && <p className="status-msg ok">{msg}</p>}
       {err && <p className="status-msg error">{err}</p>}
+
+      {breakGlass.length > 0 && (
+        <div className="card" style={{ marginTop: "1rem", borderColor: "var(--warn, #c90)" }}>
+          <h3>Break-glass administrators</h3>
+          <p className="status-msg warn">
+            {breakGlass.map((u) => u.username).join(", ")} still use is_admin wildcard (no roles). Assign
+            system_administrator and remove reliance on wildcard access.
+          </p>
+        </div>
+      )}
 
       <div className="card" style={{ marginTop: "1rem" }}>
         <table className="data-table">
@@ -174,7 +188,14 @@ export default function UsersPage() {
                 </>
               )}
               <div className="form-field"><label><input type="checkbox" checked={form.is_active !== false} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Active</label></div>
-              <div className="form-field"><label><input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} /> Admin</label></div>
+              <div className="form-field">
+                <label><input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} /> Admin</label>
+                {form.is_admin && (!form.role_ids || form.role_ids.length === 0) && (
+                  <p className="status-msg warn" style={{ marginTop: "0.5rem" }}>
+                    Admin without roles uses break-glass wildcard. Assign system_administrator for production.
+                  </p>
+                )}
+              </div>
               <div className="form-field"><label><input type="checkbox" checked={form.mfa_enabled} onChange={(e) => setForm({ ...form, mfa_enabled: e.target.checked })} /> MFA enabled</label></div>
               <div className="form-field"><label><input type="checkbox" checked={form.is_privileged_account} onChange={(e) => setForm({ ...form, is_privileged_account: e.target.checked })} /> Privileged account</label></div>
               <div className="form-field"><label><input type="checkbox" checked={form.is_service_account} onChange={(e) => setForm({ ...form, is_service_account: e.target.checked })} /> Service account</label></div>

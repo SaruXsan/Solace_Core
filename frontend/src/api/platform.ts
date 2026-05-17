@@ -345,7 +345,39 @@ export type EvidenceRow = {
   created_at: string;
 };
 
+export type SecurityReadinessReport = {
+  mfa_enabled_admins_count: number;
+  total_admins_count: number;
+  privileged_users_without_mfa: number;
+  break_glass_users: {
+    id: string;
+    username: string;
+    display_name: string;
+    email: string;
+    recommendation: string;
+  }[];
+  failed_logins_last_24h: number;
+  locked_users_count: number;
+  ldap: {
+    enabled: boolean;
+    directory_type?: string | null;
+    plain_ldap_warning?: string | null;
+  };
+  smtp: { configured: boolean; host?: string | null };
+  sessions: { active_count: number; revoked_last_24h: number };
+  permission_denied_last_24h: number;
+  encrypted_settings_vault: { reachable: boolean; smtp_password_stored: boolean };
+};
+
 export const securityApi = {
+  readiness: () => api<SecurityReadinessReport>("/security/readiness"),
+  breakGlassUsers: () =>
+    api<SecurityReadinessReport["break_glass_users"]>("/security/break-glass-users"),
+  ldapDiagnostics: (body?: { test_username?: string }) =>
+    api<Record<string, unknown>>("/security/ldap/diagnostics", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
   sessions: (params?: { user_id?: string; username?: string }) => {
     const q = new URLSearchParams();
     if (params?.user_id) q.set("user_id", params.user_id);
@@ -357,6 +389,12 @@ export const securityApi = {
     api<{ success: boolean }>(`/security/sessions/${sessionId}/revoke`, { method: "POST" }),
   revokeAllSessions: (userId: string) =>
     api<{ success: boolean; revoked: number }>(`/security/sessions/revoke-all/${userId}`, {
+      method: "POST",
+    }),
+  revokeCurrentSession: () =>
+    api<{ success: boolean }>("/security/sessions/revoke-current", { method: "POST" }),
+  revokeOtherSessions: () =>
+    api<{ success: boolean; revoked: number }>("/security/sessions/revoke-others", {
       method: "POST",
     }),
   loginAttempts: (params?: {
@@ -409,6 +447,8 @@ export type SessionRow = {
   user_agent?: string;
   created_at?: string;
   expires_at: string;
+  is_current?: boolean;
+  status?: string;
 };
 
 export type LoginAttemptRow = {

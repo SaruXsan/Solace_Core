@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -56,6 +57,8 @@ async def get_current_user(
         )
         if session is None:
             raise SolaceHTTPException(401, "Session revoked", code="SESSION_REVOKED")
+        if session.expires_at < datetime.now(timezone.utc):
+            raise SolaceHTTPException(401, "Session expired", code="SESSION_EXPIRED")
     set_organization_id(user.organization_id)
     return user
 

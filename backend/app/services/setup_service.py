@@ -46,7 +46,27 @@ def build_mssql_url(
     return f"mssql+pyodbc:///?odbc_connect={quote_plus(odbc)}"
 
 
+def _friendly_sql_error(exc: Exception) -> str:
+    msg = str(exc).lower()
+    if "odbc driver" in msg or "driver" in msg and "not found" in msg:
+        return (
+            "ODBC Driver 18 for SQL Server not found. Install Microsoft ODBC Driver 18."
+        )
+    if "login failed" in msg or "18456" in msg:
+        return "SQL Server login failed. Check username, password, and database access."
+    if "cannot open database" in msg:
+        return "Cannot open database. Verify database name exists and login has access."
+    if "network" in msg or "timeout" in msg:
+        return "Cannot reach SQL Server. Check server name, port, and firewall."
+    return str(exc)[:300]
+
+
 def test_sql_connection(url: str) -> dict:
+    if not url or "mssql" not in url.lower():
+        return {
+            "success": False,
+            "message": "SQL Server connection required. SQLite fallback is not supported.",
+        }
     try:
         engine = create_engine(url, pool_pre_ping=True)
         with engine.connect() as conn:
@@ -54,8 +74,8 @@ def test_sql_connection(url: str) -> dict:
         engine.dispose()
         return {"success": True, "message": "SQL Server connection successful"}
     except SQLAlchemyError as e:
-        logger.warning("SQL connection test failed")
-        return {"success": False, "message": str(e)[:300]}
+        logger.warning("SQL connection test failed", extra={"error_type": type(e).__name__})
+        return {"success": False, "message": _friendly_sql_error(e)}
 
 
 def initialize_database(url: str) -> None:

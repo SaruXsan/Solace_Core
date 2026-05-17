@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Foundation V1 acceptance checks — run from repo root with SOLACE_MASTER_KEY set.
 
-Validates migration head 003_foundation_completion (Foundation V1 freeze).
-For Phase 2A+ deployments use scripts/phase2a_acceptance_check.py (head 004).
+Validates migration head 004_phase2a_security_directory (current platform head).
+For staging validation use scripts/phase2b_staging_acceptance_check.py.
+For Foundation V1-only replay, set SOLACE_ACCEPTANCE_HEAD=003_foundation_completion.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ sys.path.insert(0, str(BACKEND))
 
 API_BASE = os.environ.get("SOLACE_API_URL", "http://127.0.0.1:8080")
 API_PREFIX = "/api/v1"
-EXPECTED_HEAD = "003_foundation_completion"
+EXPECTED_HEAD = os.environ.get("SOLACE_ACCEPTANCE_HEAD", "004_phase2a_security_directory")
 EXPECTED_PERMISSIONS = 35
 EXPECTED_PLACEHOLDER_MODULES = 6
 EXPECTED_RFI_SECTIONS = 7
@@ -63,12 +64,19 @@ def _http_get(path: str, token: str | None = None, timeout: float = 8.0) -> tupl
         return 0, None
 
 
-def _http_post(path: str, payload: dict, timeout: float = 8.0) -> tuple[int, dict | None]:
+def _http_post(
+    path: str,
+    payload: dict,
+    token: str | None = None,
+    timeout: float = 8.0,
+) -> tuple[int, dict | None]:
     url = f"{API_BASE}{path}"
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, method="POST", headers={"Content-Type": "application/json"}
     )
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")

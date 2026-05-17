@@ -34,6 +34,7 @@ const NAV: NavGroup[] = [
       { label: "MFA / Email OTP", path: "/security/mfa", permission: "mfa.read" },
       { label: "Sessions", path: "/security/sessions", permission: "sessions.read" },
       { label: "Login Attempts", path: "/security/login-attempts", permission: "login_attempts.read" },
+      { label: "Security Readiness", path: "/security/readiness", permission: "security.readiness" },
     ],
   },
   {
