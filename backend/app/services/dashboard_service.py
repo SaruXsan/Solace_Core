@@ -14,22 +14,35 @@ from app.services import bootstrap_store, platform_settings_service
 
 
 def get_dashboard_stats(db: Session) -> dict:
+    from app.core.scope_context import require_active_organization_id
+    from app.core.tenant_context import is_system_bypass
+
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    total_users = db.scalar(select(func.count()).select_from(CoreUser).where(CoreUser.deleted_at.is_(None))) or 0
+    user_filter = []
+    if not is_system_bypass():
+        user_filter.append(CoreUser.organization_id == require_active_organization_id())
+    total_users = db.scalar(
+        select(func.count()).select_from(CoreUser).where(CoreUser.deleted_at.is_(None), *user_filter)
+    ) or 0
     active_users = db.scalar(
         select(func.count()).select_from(CoreUser).where(
-            CoreUser.deleted_at.is_(None), CoreUser.is_active == True  # noqa: E712
+            CoreUser.deleted_at.is_(None),
+            CoreUser.is_active == True,  # noqa: E712
+            *user_filter,
         )
     ) or 0
     locked_users = db.scalar(
         select(func.count()).select_from(CoreUser).where(
             CoreUser.locked_until.isnot(None),
             CoreUser.locked_until > datetime.now(timezone.utc),
+            *user_filter,
         )
     ) or 0
     mfa_users = db.scalar(
         select(func.count()).select_from(CoreUser).where(
-            CoreUser.mfa_enabled == True, CoreUser.deleted_at.is_(None)  # noqa: E712
+            CoreUser.mfa_enabled == True,  # noqa: E712
+            CoreUser.deleted_at.is_(None),
+            *user_filter,
         )
     ) or 0
     failed_today = db.scalar(

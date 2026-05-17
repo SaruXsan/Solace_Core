@@ -119,7 +119,20 @@ def complete_setup(
         )
     )
     if sys_role:
-        db.add(CoreUserRole(user_id=admin.id, role_id=sys_role.id))
+        from app.models.platform import CoreUserRole
+
+        db.add(
+            CoreUserRole(
+                user_id=admin.id,
+                role_id=sys_role.id,
+                scope_type="global",
+                organization_id=org.id,
+            )
+        )
+    from app.services import scope_service
+
+    scope_service.ensure_user_default_scope(db, admin, created_by=admin.id)
+    scope_service.ensure_admin_global_scope(db, admin)
     bootstrap_store.mark_setup_complete()
 
     audit_service.log_audit(

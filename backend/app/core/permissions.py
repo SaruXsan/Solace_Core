@@ -8,13 +8,51 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import SolaceHTTPException
+from app.core.scope_context import ActiveScope, get_active_scope
 from app.models.platform import CorePermission, CoreRolePermission, CoreUser, CoreUserPermission, CoreUserRole
+from app.services.scope_service import SCOPE_GLOBAL
 
 
-def get_user_permission_codes(db: Session, user: CoreUser) -> set[str]:
-    """Resolve permissions from roles. is_admin grants wildcard only as break-glass when no roles assigned."""
+def _role_applies_to_active_scope(assignment: CoreUserRole, active: ActiveScope | None) -> bool:
+    st = assignment.scope_type or SCOPE_GLOBAL
+    if st == SCOPE_GLOBAL:
+        return True
+    if active is None:
+        return st == SCOPE_GLOBAL
+    if st == "country":
+        return active.country_id is None or assignment.country_id == active.country_id
+    if st == "organization":
+        return (
+            active.organization_id is not None
+            and assignment.organization_id == active.organization_id
+        )
+    if st == "branch":
+        return (
+            active.organization_id == assignment.organization_id
+            and active.branch_id == assignment.branch_id
+        )
+    if st == "department":
+        return (
+            active.organization_id == assignment.organization_id
+            and active.department_id == assignment.department_id
+        )
+    return False
+
+
+def get_user_permission_codes(
+    db: Session, user: CoreUser, active_scope: ActiveScope | None = None
+) -> set[str]:
+    """Resolve permissions from roles scoped to active enterprise context."""
+    active = active_scope or get_active_scope()
     codes: set[str] = set()
-    role_ids = db.scalars(select(CoreUserRole.role_id).where(CoreUserRole.user_id == user.id)).all()
+    assignments = db.scalars(select(CoreUserRole).where(CoreUserRole.user_id == user.id)).all()
+    role_ids: list[uuid.UUID] = []
+    for a in assignments:
+        if isinstance(a, CoreUserRole):
+            if _role_applies_to_active_scope(a, active):
+                role_ids.append(a.role_id)
+        else:
+            role_ids.append(a)  # type: ignore[arg-type]
     if role_ids:
         perm_ids = db.scalars(
             select(CoreRolePermission.permission_id).where(
@@ -41,8 +79,10 @@ def get_user_permission_codes(db: Session, user: CoreUser) -> set[str]:
     return codes
 
 
-def user_has_any_permission(db: Session, user: CoreUser, *codes: str) -> bool:
-    user_codes = get_user_permission_codes(db, user)
+def user_has_any_permission(
+    db: Session, user: CoreUser, *codes: str, active_scope: ActiveScope | None = None
+) -> bool:
+    user_codes = get_user_permission_codes(db, user, active_scope)
     if "*" in user_codes:
         return True
     return any(c in user_codes for c in codes)

@@ -66,7 +66,31 @@ export const authApi = {
       email: string;
       display_name: string;
       is_admin: boolean;
+      organization_id: string;
       permissions?: string[];
+      active_scope?: ActiveScope | null;
+      available_scopes?: ActiveScope[];
     }>("/auth/me"),
+  availableScopes: () => api<ActiveScope[]>("/auth/available-scopes"),
+  switchScope: (body: {
+    scope_type: string;
+    country_id?: string;
+    organization_id?: string;
+    branch_id?: string;
+    department_id?: string;
+  }) =>
+    api<{ access_token: string; token_type: string; active_scope: ActiveScope }>(
+      "/auth/switch-scope",
+      { method: "POST", body: JSON.stringify(body) }
+    ),
   logout: () => api<{ success: boolean }>("/auth/logout", { method: "POST" }),
+};
+
+export type ActiveScope = {
+  scope_type: string;
+  country_id?: string | null;
+  organization_id?: string | null;
+  branch_id?: string | null;
+  department_id?: string | null;
+  label?: string | null;
 };

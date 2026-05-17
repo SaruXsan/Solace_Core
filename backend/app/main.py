@@ -34,9 +34,14 @@ async def lifespan(app: FastAPI):
       with session_scope() as db:
         from app.services import permission_seed_service
 
+        from app.services import country_service, scope_service
+
         permission_seed_service.ensure_rbac_for_all_orgs(db)
+        country_service.seed_default_countries(db)
+        scope_service.backfill_scopes_for_all_users(db)
         platform_settings_service.get_or_create_security_settings(db)
         platform_settings_service.apply_security_settings_to_runtime(db)
+        db.commit()
     except Exception:
       logger.warning("Could not load security settings from database")
   else:

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.exceptions import SetupRequiredException, SolaceHTTPException
 from app.core.security import decode_access_token
+from app.core.scope_context import ActiveScope, set_active_scope
 from app.core.tenant_context import set_organization_id
 from app.models.platform import CoreSession, CoreUser
 from app.services import bootstrap_store
@@ -59,7 +60,17 @@ async def get_current_user(
             raise SolaceHTTPException(401, "Session revoked", code="SESSION_REVOKED")
         if session.expires_at < datetime.now(timezone.utc):
             raise SolaceHTTPException(401, "Session expired", code="SESSION_EXPIRED")
-    set_organization_id(user.organization_id)
+        scope = ActiveScope(
+            scope_type=session.active_scope_type or "organization",
+            country_id=session.active_country_id,
+            organization_id=session.organization_id,
+            branch_id=session.active_branch_id,
+            department_id=session.active_department_id,
+        )
+        set_active_scope(scope)
+        set_organization_id(session.organization_id)
+    else:
+        set_organization_id(user.organization_id)
     return user
 
 

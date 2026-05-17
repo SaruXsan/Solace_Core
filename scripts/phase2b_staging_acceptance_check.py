@@ -14,8 +14,8 @@ sys.path.insert(0, str(BACKEND))
 import foundation_acceptance_check as fac  # noqa: E402
 import phase2a_acceptance_check as p2a  # noqa: E402
 
-fac.EXPECTED_HEAD = os.environ.get("SOLACE_ACCEPTANCE_HEAD", "004_phase2a_security_directory")
-fac.EXPECTED_PERMISSIONS = 44
+fac.EXPECTED_HEAD = os.environ.get("SOLACE_ACCEPTANCE_HEAD", "005_phase2c_enterprise_scope")
+fac.EXPECTED_PERMISSIONS = 52
 p2a.fac.EXPECTED_HEAD = fac.EXPECTED_HEAD
 p2a.fac.EXPECTED_PERMISSIONS = 44
 

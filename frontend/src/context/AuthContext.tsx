@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { authApi } from "../api/client";
+import { authApi, type ActiveScope } from "../api/client";
 import { hasAllPermissions, hasAnyPermission, hasPermission } from "../auth/permissions";
 
 type AuthState = {
@@ -15,6 +15,8 @@ type AuthState = {
   isAdmin: boolean;
   displayName: string;
   loaded: boolean;
+  activeScope: ActiveScope | null;
+  availableScopes: ActiveScope[];
   refresh: () => Promise<void>;
   can: (permission: string) => boolean;
   canAny: (permissions: string[]) => boolean;
@@ -27,6 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [activeScope, setActiveScope] = useState<ActiveScope | null>(null);
+  const [availableScopes, setAvailableScopes] = useState<ActiveScope[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -34,6 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setPermissions([]);
       setIsAdmin(false);
+      setActiveScope(null);
+      setAvailableScopes([]);
       setLoaded(true);
       return;
     }
@@ -43,6 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPermissions(perms);
       setIsAdmin(me.is_admin);
       setDisplayName(me.display_name);
+      setActiveScope(me.active_scope ?? null);
+      setAvailableScopes(me.available_scopes ?? []);
       localStorage.setItem("display_name", me.display_name);
     } catch {
       setPermissions([]);
@@ -61,12 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       displayName,
       loaded,
+      activeScope,
+      availableScopes,
       refresh,
       can: (p) => hasPermission(permissions, p),
       canAny: (ps) => hasAnyPermission(permissions, ps),
       canAll: (ps) => hasAllPermissions(permissions, ps),
     }),
-    [permissions, isAdmin, displayName, loaded, refresh]
+    [permissions, isAdmin, displayName, loaded, activeScope, availableScopes, refresh]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

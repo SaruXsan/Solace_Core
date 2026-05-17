@@ -123,12 +123,24 @@ def preview_sync(db: Session) -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def _resolve_sync_organization(db: Session):
+    row = ldap_service.get_directory_settings(db)
+    if row and row.default_sync_organization_id:
+        org = db.get(CoreOrganization, row.default_sync_organization_id)
+        if org and not org.deleted_at:
+            return org, row
+    org = db.scalar(select(CoreOrganization).where(CoreOrganization.deleted_at.is_(None)).limit(1))
+    if not org:
+        raise SolaceHTTPException(
+            503,
+            "No company configured for LDAP sync. Set default_sync_organization_id in directory settings.",
+        )
+    return org, row
+
+
 def apply_sync(db: Session, actor_id: uuid.UUID) -> dict[str, Any]:
     preview = preview_sync(db)
-    row = ldap_service.get_directory_settings(db)
-    org = db.scalar(select(CoreOrganization).limit(1))
-    if not org:
-        raise SolaceHTTPException(503, "No organization configured")
+    org, row = _resolve_sync_organization(db)
 
     counts = {"created": 0, "updated": 0, "disabled": 0}
     now = _utcnow()
@@ -152,8 +164,15 @@ def apply_sync(db: Session, actor_id: uuid.UUID) -> dict[str, Any]:
             last_directory_sync_at=now,
             is_active=True,
         )
+        if row and row.default_sync_branch_id:
+            user.branch_id = row.default_sync_branch_id
+        if row and row.default_sync_department_id:
+            user.department_id = row.default_sync_department_id
         db.add(user)
         db.flush()
+        from app.services import scope_service
+
+        scope_service.ensure_user_default_scope(db, user, created_by=actor_id)
         ldap_service.apply_group_roles_to_user(db, user, du.get("groups") or [])
         counts["created"] += 1
 

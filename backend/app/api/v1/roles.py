@@ -30,9 +30,12 @@ def list_roles(
     db: Session = Depends(get_configured_db),
     user: CoreUser = Depends(require_permission("roles.read")),
 ):
-    role_service.seed_base_roles(db, user.organization_id)
+    from app.core.scope_context import require_active_organization_id
+
+    org_id = require_active_organization_id()
+    role_service.seed_base_roles(db, org_id)
     db.commit()
-    return role_service.list_roles(db, user.organization_id)
+    return role_service.list_roles(db, org_id)
 
 
 @router.post("", response_model=RoleOut)

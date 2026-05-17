@@ -143,5 +143,12 @@ def ensure_admin_users_have_system_administrator_role(db: Session) -> None:
             )
         )
         if exists is None:
-            db.add(CoreUserRole(user_id=user.id, role_id=role.id))
+            db.add(
+                CoreUserRole(
+                    user_id=user.id,
+                    role_id=role.id,
+                    scope_type="global",
+                    organization_id=user.organization_id,
+                )
+            )
     db.flush()

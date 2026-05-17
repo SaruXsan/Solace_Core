@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { authApi } from "../api/client";
+import ScopeSelector from "./ScopeSelector";
 import { useAuth } from "../context/AuthContext";
 import "./Layout.css";
 
@@ -22,7 +23,11 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Users", path: "/platform/users", permission: "users.read" },
       { label: "Roles & Permissions", path: "/platform/roles", permission: "roles.read" },
-      { label: "Organizations / Branches", path: "/platform/organizations", anyOf: ["organizations.read", "branches.read"] },
+      { label: "Countries", path: "/platform/countries", permission: "countries.read" },
+      { label: "Companies", path: "/platform/companies", permission: "companies.read" },
+      { label: "Branches", path: "/platform/branches", permission: "branches.read" },
+      { label: "Departments", path: "/platform/departments", permission: "departments.read" },
+      { label: "User Scopes", path: "/platform/user-scopes", permission: "scopes.read" },
       { label: "Modules", path: "/platform/modules", permission: "modules.read" },
       { label: "Settings", path: "/platform/settings", permission: "settings.read" },
     ],
@@ -103,6 +108,7 @@ export default function Layout() {
           <span className="env-badge">FOUNDATION</span>
         </div>
         <div className="topbar-right">
+          <ScopeSelector />
           <span className="status-dot" title="System online" />
           <span className="user-label">{displayName || "User"}</span>
           <button className="btn-secondary" onClick={signOut}>

@@ -19,30 +19,78 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import (
     Base,
     SoftDeleteMixin,
+    CreatedAtMixin,
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
 
 
-class CoreOrganization(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
-    __tablename__ = "Core_Organizations"
+class CoreCountry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Country / jurisdiction — legal and regulatory context."""
+
+    __tablename__ = "Core_Countries"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+    default_language: Mapped[str] = mapped_column(String(16), default="en")
+    supported_languages: Mapped[str | None] = mapped_column(Text, nullable=True)
+    currency_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    date_format: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    rtl_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    legal_system_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    court_structure_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+
+
+class CoreOrganization(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
+    """Company / legal entity (table name retained: Core_Organizations)."""
+
+    __tablename__ = "Core_Organizations"
+
+    country_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Countries.id"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    commercial_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    registration_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tax_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    default_currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    default_language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class CoreBranch(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
+    """Branch / site — operational location."""
+
     __tablename__ = "Core_Branches"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("Core_Organizations.id"), nullable=False, index=True
     )
+    country_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Countries.id"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
+    branch_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    branch_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class CoreDepartment(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
+    """Department / business unit."""
+
     __tablename__ = "Core_Departments"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -51,8 +99,15 @@ class CoreDepartment(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin)
     branch_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("Core_Branches.id"), nullable=True
     )
+    parent_department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Departments.id"), nullable=True
+    )
+    manager_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Users.id"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class CoreUser(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
@@ -92,6 +147,38 @@ class CoreUser(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
         DateTime(timezone=True), nullable=True
     )
     mfa_disable_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    default_country_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Countries.id"), nullable=True
+    )
+    default_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Organizations.id"), nullable=True
+    )
+    default_branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Branches.id"), nullable=True
+    )
+    default_department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Departments.id"), nullable=True
+    )
+
+
+class CoreUserScope(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
+    """Assignable enterprise scope for a user."""
+
+    __tablename__ = "Core_UserScopes"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("Core_Users.id"), nullable=False, index=True)
+    country_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("Core_Countries.id"), nullable=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Organizations.id"), nullable=True
+    )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("Core_Branches.id"), nullable=True)
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Departments.id"), nullable=True
+    )
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
 
 class CoreUserProfile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -129,10 +216,18 @@ class CorePermission(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class CoreUserRole(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "Core_UserRoles"
-    __table_args__ = (UniqueConstraint("user_id", "role_id"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("Core_Users.id"), nullable=False)
     role_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("Core_Roles.id"), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(32), default="global", nullable=False)
+    country_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("Core_Countries.id"), nullable=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Organizations.id"), nullable=True
+    )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("Core_Branches.id"), nullable=True)
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Departments.id"), nullable=True
+    )
 
 
 class CoreRolePermission(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -163,6 +258,16 @@ class CoreSession(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     organization_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("Core_Organizations.id"), nullable=False
     )
+    active_country_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Countries.id"), nullable=True
+    )
+    active_branch_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Branches.id"), nullable=True
+    )
+    active_department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Departments.id"), nullable=True
+    )
+    active_scope_type: Mapped[str] = mapped_column(String(32), default="organization", nullable=False)
     token_jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(String(512))

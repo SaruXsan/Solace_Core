@@ -42,6 +42,10 @@ class AuthDirectorySetting(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     last_sync_status: Mapped[str | None] = mapped_column(String(64))
     plain_ldap_warning_acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
     overwrite_local_on_sync: Mapped[bool] = mapped_column(Boolean, default=False)
+    default_sync_country_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    default_sync_organization_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    default_sync_branch_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    default_sync_department_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
 
 class AuthGroupRoleMapping(Base, UUIDPrimaryKeyMixin, TimestampMixin):

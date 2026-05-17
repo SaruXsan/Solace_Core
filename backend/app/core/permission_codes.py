@@ -49,6 +49,14 @@ FOUNDATION_PERMISSIONS: list[tuple[str, str, str | None]] = [
     ("mfa.manage", "Manage User MFA State", "core"),
     ("smtp.test", "Test SMTP Email", "core"),
     ("security.readiness", "View Security Readiness Report", "core"),
+    ("countries.read", "View Countries / Jurisdictions", "core"),
+    ("countries.manage", "Manage Countries / Jurisdictions", "core"),
+    ("companies.read", "View Companies / Legal Entities", "core"),
+    ("companies.manage", "Manage Companies / Legal Entities", "core"),
+    ("scopes.read", "View Enterprise Scopes", "core"),
+    ("scopes.manage", "Manage Enterprise Scopes", "core"),
+    ("user_scopes.manage", "Assign User Scopes", "core"),
+    ("role_scopes.manage", "Assign Scoped Roles", "core"),
 ]
 
 ALL_PERMISSION_CODES: frozenset[str] = frozenset(c for c, _, _ in FOUNDATION_PERMISSIONS)
@@ -82,6 +90,17 @@ SECURITY_ADMIN_PERMISSIONS: frozenset[str] = READ_ONLY_PERMISSIONS | frozenset(
         "sessions.revoke",
         "login_attempts.read",
         "security.readiness",
+        "countries.read",
+        "countries.manage",
+        "companies.read",
+        "companies.manage",
+        "scopes.read",
+        "scopes.manage",
+        "user_scopes.manage",
+        "role_scopes.manage",
+        "organizations.update",
+        "branches.update",
+        "departments.update",
     }
 )
 

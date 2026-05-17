@@ -10,6 +10,11 @@ import UsersPage from "./pages/UsersPage";
 import RolesPage from "./pages/RolesPage";
 import ModulesPage from "./pages/ModulesPage";
 import OrganizationsPage from "./pages/OrganizationsPage";
+import CountriesPage from "./pages/CountriesPage";
+import CompaniesPage from "./pages/CompaniesPage";
+import BranchesPage from "./pages/BranchesPage";
+import DepartmentsPage from "./pages/DepartmentsPage";
+import UserScopesPage from "./pages/UserScopesPage";
 import RFICenterPage from "./pages/RFICenterPage";
 import EvidencePage from "./pages/EvidencePage";
 import LogsPage from "./pages/LogsPage";
@@ -47,6 +52,11 @@ export default function App() {
           <Route path="/platform/users" element={<UsersPage />} />
           <Route path="/platform/roles" element={<RolesPage />} />
           <Route path="/platform/organizations" element={<OrganizationsPage />} />
+          <Route path="/platform/countries" element={<CountriesPage />} />
+          <Route path="/platform/companies" element={<CompaniesPage />} />
+          <Route path="/platform/branches" element={<BranchesPage />} />
+          <Route path="/platform/departments" element={<DepartmentsPage />} />
+          <Route path="/platform/user-scopes" element={<UserScopesPage />} />
           <Route path="/platform/modules" element={<ModulesPage />} />
           <Route path="/platform/settings" element={<SettingsPage />} />
           <Route path="/security/ldap" element={<SettingsRedirectPage />} />

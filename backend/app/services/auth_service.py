@@ -153,9 +153,9 @@ def authenticate_user(
             if user is None:
                 from app.models.platform import CoreOrganization
 
-                org = db.scalar(select(CoreOrganization).limit(1))
-                if not org:
-                    raise SolaceHTTPException(503, "No organization configured")
+                from app.services.ldap_sync_service import _resolve_sync_organization
+
+                org, dir_row = _resolve_sync_organization(db)
                 user = CoreUser(
                     organization_id=org.id,
                     username=username,
@@ -166,8 +166,15 @@ def authenticate_user(
                     directory_object_id=attrs.get("directory_object_id"),
                     is_active=True,
                 )
+                if dir_row and dir_row.default_sync_branch_id:
+                    user.branch_id = dir_row.default_sync_branch_id
+                if dir_row and dir_row.default_sync_department_id:
+                    user.department_id = dir_row.default_sync_department_id
                 db.add(user)
                 db.flush()
+                from app.services import scope_service
+
+                scope_service.ensure_user_default_scope(db, user)
             else:
                 user.directory_source = auth_src
                 user.is_directory_user = True
@@ -224,24 +231,37 @@ def create_session(
     ip_address: str | None,
     user_agent: str | None,
 ) -> tuple[str, CoreSession]:
+    from app.core.scope_context import set_active_scope
+    from app.services import scope_service
+
+    scope_service.ensure_user_default_scope(db, user)
+    scope_service.ensure_admin_global_scope(db, user)
+    active = scope_service.resolve_default_scope(db, user)
+    org_id = active.organization_id or user.organization_id
     jti = secrets.token_hex(16)
     expires = _utcnow() + timedelta(minutes=settings.token_expiry_minutes)
-    token = create_access_token(
-        str(user.id),
-        str(user.organization_id),
-        settings.token_expiry_minutes,
-        extra={"jti": jti},
-    )
     session = CoreSession(
         user_id=user.id,
-        organization_id=user.organization_id,
+        organization_id=org_id,
         token_jti=jti,
         ip_address=ip_address,
         user_agent=user_agent,
         expires_at=expires,
     )
+    scope_service.apply_session_scope(session, active)
+    token = create_access_token(
+        str(user.id),
+        str(org_id),
+        settings.token_expiry_minutes,
+        extra={"jti": jti},
+        scope_type=active.scope_type,
+        country_id=str(active.country_id) if active.country_id else None,
+        branch_id=str(active.branch_id) if active.branch_id else None,
+        department_id=str(active.department_id) if active.department_id else None,
+    )
     db.add(session)
-    set_organization_id(user.organization_id)
+    set_organization_id(org_id)
+    set_active_scope(active)
     return token, session
 
 

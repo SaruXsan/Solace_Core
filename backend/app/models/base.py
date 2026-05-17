@@ -17,6 +17,14 @@ class Base(DeclarativeBase):
     pass
 
 
+class CreatedAtMixin:
+    """Tables that only persist created_at (no updated_at column)."""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()

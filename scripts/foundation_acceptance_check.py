@@ -21,7 +21,7 @@ sys.path.insert(0, str(BACKEND))
 
 API_BASE = os.environ.get("SOLACE_API_URL", "http://127.0.0.1:8080")
 API_PREFIX = "/api/v1"
-EXPECTED_HEAD = os.environ.get("SOLACE_ACCEPTANCE_HEAD", "004_phase2a_security_directory")
+EXPECTED_HEAD = os.environ.get("SOLACE_ACCEPTANCE_HEAD", "005_phase2c_enterprise_scope")
 EXPECTED_PERMISSIONS = 35
 EXPECTED_PLACEHOLDER_MODULES = 6
 EXPECTED_RFI_SECTIONS = 7

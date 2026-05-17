@@ -32,6 +32,11 @@ def create_access_token(
     organization_id: str,
     expires_minutes: int,
     extra: dict[str, Any] | None = None,
+    *,
+    scope_type: str | None = None,
+    country_id: str | None = None,
+    branch_id: str | None = None,
+    department_id: str | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
@@ -41,6 +46,14 @@ def create_access_token(
         "exp": now + timedelta(minutes=expires_minutes),
         "type": "access",
     }
+    if scope_type:
+        payload["scope_type"] = scope_type
+    if country_id:
+        payload["country_id"] = country_id
+    if branch_id:
+        payload["branch_id"] = branch_id
+    if department_id:
+        payload["department_id"] = department_id
     if extra:
         payload.update(extra)
     return jwt.encode(payload, _jwt_secret(), algorithm=_ALGORITHM)

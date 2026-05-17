@@ -29,7 +29,11 @@ def list_users(
     db: Session = Depends(get_configured_db),
     user: CoreUser = Depends(require_permission("users.read")),
 ):
-    return user_service.list_users(db, user.organization_id)
+    from app.core.scope_context import require_active_organization_id
+    from app.core.tenant_context import is_system_bypass
+
+    org_filter = None if is_system_bypass() else require_active_organization_id()
+    return user_service.list_users(db, org_filter)
 
 
 @router.get("/{user_id}", response_model=UserOut)
@@ -38,11 +42,16 @@ def get_user(
     db: Session = Depends(get_configured_db),
     actor: CoreUser = Depends(require_permission("users.read")),
 ):
-    row = user_service.get_user(db, user_id)
-    if not actor.is_admin and row["organization_id"] != str(actor.organization_id):
-        from app.core.exceptions import SolaceHTTPException
+    from app.core.exceptions import SolaceHTTPException
+    from app.core.scope_context import require_active_organization_id
+    from app.core.tenant_context import is_system_bypass
+    from app.services.scope_service import user_has_global_scope
 
-        raise SolaceHTTPException(403, "Cross-organization access denied", code="FORBIDDEN")
+    row = user_service.get_user(db, user_id)
+    if not is_system_bypass() and not user_has_global_scope(db, actor.id):
+        active_org = str(require_active_organization_id())
+        if row["organization_id"] != active_org:
+            raise SolaceHTTPException(403, "Cross-organization access denied", code="FORBIDDEN")
     return row
 
 

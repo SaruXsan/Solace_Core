@@ -36,9 +36,14 @@ def _user_to_dict(user: CoreUser, role_ids: list[uuid.UUID]) -> dict[str, Any]:
 
 
 def list_users(db: Session, organization_id: uuid.UUID | None = None) -> list[dict]:
+    from app.core.scope_context import require_active_organization_id
+    from app.core.tenant_context import is_system_bypass
+
     q = select(CoreUser).where(CoreUser.deleted_at.is_(None))
     if organization_id:
         q = q.where(CoreUser.organization_id == organization_id)
+    elif not is_system_bypass():
+        q = q.where(CoreUser.organization_id == require_active_organization_id())
     users = db.scalars(q.order_by(CoreUser.username)).all()
     out = []
     for u in users:
@@ -150,14 +155,25 @@ def _set_user_roles(db: Session, user_id: uuid.UUID, role_ids: list) -> None:
 
 
 def list_org_structure(db: Session) -> dict:
+    from app.core.scope_context import require_active_organization_id
+    from app.core.tenant_context import is_system_bypass
     from app.models.platform import CoreBranch, CoreDepartment, CoreOrganization
 
-    orgs = db.scalars(select(CoreOrganization).where(CoreOrganization.deleted_at.is_(None))).all()
-    branches = db.scalars(select(CoreBranch).where(CoreBranch.deleted_at.is_(None))).all()
-    departments = db.scalars(
-        select(CoreDepartment).where(CoreDepartment.deleted_at.is_(None))
-    ).all()
-    roles = db.scalars(select(CoreRole).where(CoreRole.deleted_at.is_(None))).all()
+    org_filter = None if is_system_bypass() else require_active_organization_id()
+    org_q = select(CoreOrganization).where(CoreOrganization.deleted_at.is_(None))
+    if org_filter:
+        org_q = org_q.where(CoreOrganization.id == org_filter)
+    orgs = db.scalars(org_q).all()
+    branch_q = select(CoreBranch).where(CoreBranch.deleted_at.is_(None))
+    dept_q = select(CoreDepartment).where(CoreDepartment.deleted_at.is_(None))
+    role_q = select(CoreRole).where(CoreRole.deleted_at.is_(None))
+    if org_filter:
+        branch_q = branch_q.where(CoreBranch.organization_id == org_filter)
+        dept_q = dept_q.where(CoreDepartment.organization_id == org_filter)
+        role_q = role_q.where(CoreRole.organization_id == org_filter)
+    branches = db.scalars(branch_q).all()
+    departments = db.scalars(dept_q).all()
+    roles = db.scalars(role_q).all()
     return {
         "organizations": [{"id": str(o.id), "name": o.name, "code": o.code} for o in orgs],
         "branches": [
