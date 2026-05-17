@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from "react";
-import { usersApi, type OrgStructure, type UserInput, type UserRow } from "../api/platform";
+import { securityApi, usersApi, type OrgStructure, type UserInput, type UserRow } from "../api/platform";
 import { useAuth } from "../context/AuthContext";
 import "../components/forms.css";
 
@@ -183,6 +183,27 @@ export default function UsersPage() {
               <button className="btn-primary" onClick={save}>Save</button>
               <button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
             </div>
+            {modal === "edit" && form.id && can("mfa.manage") && (
+              <div style={{ marginTop: "1.5rem", borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
+                <h3 style={{ fontSize: "0.95rem" }}>MFA administration</h3>
+                <div className="form-actions" style={{ flexWrap: "wrap" }}>
+                  <button type="button" className="btn-secondary" onClick={async () => {
+                    await securityApi.mfaResetCooldown(form.id!);
+                    setMsg("MFA cooldown reset");
+                  }}>Reset cooldown</button>
+                  <button type="button" className="btn-secondary" onClick={async () => {
+                    const r = await securityApi.mfaClearChallenges(form.id!);
+                    setMsg(`Cleared ${r.cleared} challenge(s)`);
+                  }}>Clear challenges</button>
+                  <button type="button" className="btn-secondary" onClick={async () => {
+                    const reason = prompt("Audit reason for temporary MFA disable (min 8 chars):");
+                    if (!reason) return;
+                    await securityApi.mfaTempDisable(form.id!, 8, reason);
+                    setMsg("MFA temporarily disabled (8h)");
+                  }}>Disable MFA 8h</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

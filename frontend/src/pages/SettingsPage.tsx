@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { settingsApi, type LdapSettingsInput, type MfaSettingsInput } from "../api/platform";
+import { rolesApi, settingsApi, type LdapSettingsInput, type MfaSettingsInput } from "../api/platform";
 import { useAuth } from "../context/AuthContext";
 import ReadOnlyNotice from "../components/ReadOnlyNotice";
 import "../components/forms.css";
@@ -41,6 +41,11 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
     plain_ldap_warning_acknowledged: false,
   });
   const [ldapTestUser, setLdapTestUser] = useState("");
+  const [ldapLookup, setLdapLookup] = useState<Record<string, unknown> | null>(null);
+  const [groupMappings, setGroupMappings] = useState<{ directory_group_dn: string; role_id: string }[]>([]);
+  const [roles, setRoles] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [syncPreview, setSyncPreview] = useState<Record<string, unknown[]> | null>(null);
+  const [smtpTestTo, setSmtpTestTo] = useState("");
   const [mfa, setMfa] = useState<MfaSettingsInput>({
     enable_mfa: false,
     require_mfa_for_admins: true,
@@ -76,6 +81,10 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
       if (t === "ldap") {
         const l = await settingsApi.ldap.get();
         setLdap({ ...ldap, ...l, bind_password: undefined });
+        const maps = await settingsApi.ldap.groupMappings.list();
+        setGroupMappings(maps.map((m) => ({ directory_group_dn: m.directory_group_dn, role_id: m.role_id })));
+        const r = await rolesApi.list();
+        setRoles(r.map((x) => ({ id: x.id, code: x.code, name: x.name })));
       }
       if (t === "mfa") {
         const m = await settingsApi.mfa.get();
@@ -265,10 +274,64 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
                   }}>Test Connection</button>
                   <button className="btn-secondary" disabled={!ldapTestUser} onClick={async () => {
                     const r = await settingsApi.ldap.testUser(ldapTestUser);
-                    setMsg(JSON.stringify(r));
+                    setLdapLookup(r as Record<string, unknown>);
+                    setMsg(r.found ? "User found in directory" : "User not found");
                   }}>Test User Lookup</button>
                 </>
               )}
+            </div>
+          )}
+          {ldapLookup && ldapLookup.found === true && (
+            <div className="card" style={{ marginTop: "1rem", background: "var(--bg-elevated)" }}>
+              <h3>Lookup result</h3>
+              <p><strong>Username:</strong> {String(ldapLookup.username)}</p>
+              <p><strong>Email:</strong> {String(ldapLookup.email || "-")}</p>
+              <p><strong>Display name:</strong> {String(ldapLookup.display_name || "-")}</p>
+              <p><strong>Department:</strong> {String(ldapLookup.department || "-")}</p>
+              <p><strong>Groups:</strong> {(ldapLookup.groups as string[] | undefined)?.join(", ") || "-"}</p>
+            </div>
+          )}
+          {can("ldap.update") && (
+            <div style={{ marginTop: "1.5rem" }}>
+              <h3>Group ? role mapping</h3>
+              {groupMappings.map((m, i) => (
+                <div key={i} className="form-grid" style={{ marginBottom: "0.5rem" }}>
+                  <div className="form-field"><input placeholder="CN=Group,OU=..." value={m.directory_group_dn} onChange={(e) => {
+                    const next = [...groupMappings]; next[i] = { ...m, directory_group_dn: e.target.value }; setGroupMappings(next);
+                  }} /></div>
+                  <div className="form-field">
+                    <select value={m.role_id} onChange={(e) => {
+                      const next = [...groupMappings]; next[i] = { ...m, role_id: e.target.value }; setGroupMappings(next);
+                    }}>
+                      <option value="">Select role</option>
+                      {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              ))}
+              <button type="button" className="btn-secondary" onClick={() => setGroupMappings([...groupMappings, { directory_group_dn: "", role_id: "" }])}>Add mapping</button>
+              <button type="button" className="btn-primary" style={{ marginLeft: "0.5rem" }} onClick={async () => {
+                await settingsApi.ldap.groupMappings.save(groupMappings.filter((m) => m.directory_group_dn && m.role_id));
+                setMsg("Group mappings saved");
+              }}>Save mappings</button>
+            </div>
+          )}
+          {can("ldap.sync") && (
+            <div style={{ marginTop: "1.5rem" }}>
+              <h3>Directory sync</h3>
+              <label><input type="checkbox" checked={!!ldap.overwrite_local_on_sync} onChange={(e) => setLdap({ ...ldap, overwrite_local_on_sync: e.target.checked })} /> Overwrite local users on sync</label>
+              <div className="form-actions" style={{ marginTop: "0.5rem" }}>
+                <button className="btn-secondary" onClick={async () => {
+                  setSyncPreview(await settingsApi.ldap.syncPreview());
+                  setMsg("Sync preview ready");
+                }}>Preview Sync</button>
+                <button className="btn-primary" onClick={async () => {
+                  if (!confirm("Apply directory sync?")) return;
+                  const r = await settingsApi.ldap.syncApply();
+                  setMsg(`Applied: ${JSON.stringify(r.counts)}`);
+                }}>Apply Sync</button>
+              </div>
+              {syncPreview && <pre style={{ marginTop: "1rem", fontSize: "0.8rem" }}>{JSON.stringify(syncPreview, null, 2)}</pre>}
             </div>
           )}
         </div>
@@ -302,6 +365,19 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
                 setMsg("MFA settings saved");
                 await loadTab("mfa");
               }}>Save Settings</button>
+            </div>
+          )}
+          {can("smtp.test") && !roMfa && (
+            <div style={{ marginTop: "1.5rem" }}>
+              <h3>Test SMTP</h3>
+              <div className="form-field">
+                <label>Send test email to</label>
+                <input type="email" value={smtpTestTo} onChange={(e) => setSmtpTestTo(e.target.value)} placeholder="you@company.com" />
+              </div>
+              <button className="btn-secondary" onClick={async () => {
+                const r = await settingsApi.mfa.testSmtp(smtpTestTo);
+                setMsg(r.message);
+              }}>Send test email</button>
             </div>
           )}
         </div>
@@ -362,4 +438,5 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
     </>
   );
 }
+
 

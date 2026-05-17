@@ -15,7 +15,14 @@ from app.core.permission_codes import (
     SECURITY_ADMIN_PERMISSIONS,
     STANDARD_USER_PERMISSIONS,
 )
-from app.models.platform import CoreOrganization, CorePermission, CoreRole, CoreRolePermission
+from app.models.platform import (
+    CoreOrganization,
+    CorePermission,
+    CoreRole,
+    CoreRolePermission,
+    CoreUser,
+    CoreUserRole,
+)
 
 
 ROLE_TEMPLATES: list[tuple[str, str, bool, frozenset[str]]] = [
@@ -109,3 +116,32 @@ def ensure_rbac_for_all_orgs(db: Session) -> None:
     orgs = db.scalars(select(CoreOrganization).where(CoreOrganization.deleted_at.is_(None))).all()
     for org in orgs:
         ensure_system_roles(db, org.id)
+    ensure_admin_users_have_system_administrator_role(db)
+
+
+def ensure_admin_users_have_system_administrator_role(db: Session) -> None:
+    """Assign system_administrator role to bootstrap/admin users (Phase 2A)."""
+    admins = db.scalars(
+        select(CoreUser).where(
+            CoreUser.is_admin == True,  # noqa: E712
+            CoreUser.deleted_at.is_(None),
+        )
+    ).all()
+    for user in admins:
+        role = db.scalar(
+            select(CoreRole).where(
+                CoreRole.organization_id == user.organization_id,
+                CoreRole.code == "system_administrator",
+            )
+        )
+        if role is None:
+            continue
+        exists = db.scalar(
+            select(CoreUserRole.id).where(
+                CoreUserRole.user_id == user.id,
+                CoreUserRole.role_id == role.id,
+            )
+        )
+        if exists is None:
+            db.add(CoreUserRole(user_id=user.id, role_id=role.id))
+    db.flush()

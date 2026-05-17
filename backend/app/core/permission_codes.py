@@ -41,6 +41,13 @@ FOUNDATION_PERMISSIONS: list[tuple[str, str, str | None]] = [
     ("branches.update", "Create/Update Branches", "core"),
     ("departments.read", "View Departments", "core"),
     ("departments.update", "Create/Update Departments", "core"),
+    ("sessions.read", "View Active Sessions", "core"),
+    ("sessions.revoke", "Revoke Sessions", "core"),
+    ("login_attempts.read", "View Login Attempts", "core"),
+    ("users.unlock", "Unlock Locked Users", "core"),
+    ("ldap.sync", "LDAP Directory Sync", "core"),
+    ("mfa.manage", "Manage User MFA State", "core"),
+    ("smtp.test", "Test SMTP Email", "core"),
 ]
 
 ALL_PERMISSION_CODES: frozenset[str] = frozenset(c for c, _, _ in FOUNDATION_PERMISSIONS)
@@ -58,14 +65,21 @@ SECURITY_ADMIN_PERMISSIONS: frozenset[str] = READ_ONLY_PERMISSIONS | frozenset(
         "settings.update",
         "ldap.update",
         "ldap.test",
+        "ldap.sync",
         "mfa.update",
+        "mfa.manage",
+        "smtp.test",
         "users.update",
         "users.disable",
+        "users.unlock",
         "roles.read",
         "roles.update",
         "permissions.manage",
         "modules.update",
         "ai_providers.update",
+        "sessions.read",
+        "sessions.revoke",
+        "login_attempts.read",
     }
 )
 

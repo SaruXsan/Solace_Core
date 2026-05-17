@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Foundation V1 acceptance checks — run from repo root with SOLACE_MASTER_KEY set."""
+"""Foundation V1 acceptance checks — run from repo root with SOLACE_MASTER_KEY set.
+
+Validates migration head 003_foundation_completion (Foundation V1 freeze).
+For Phase 2A+ deployments use scripts/phase2a_acceptance_check.py (head 004).
+"""
 
 from __future__ import annotations
 

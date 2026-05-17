@@ -143,6 +143,64 @@ def update_mfa_settings(
     return sec
 
 
+def test_smtp_email(
+    db: Session, to_address: str, actor_id: uuid.UUID | None = None
+) -> dict:
+    """Send a test email; never log credentials or message body secrets."""
+    import logging
+    import smtplib
+    from email.mime.text import MIMEText
+
+    from app.services import audit_service
+
+    logger = logging.getLogger(__name__)
+    sec = get_or_create_security_settings(db)
+    password = settings_service.get_encrypted_setting(db, "smtp_password")
+    if not sec.smtp_host or not password:
+        return {
+            "success": False,
+            "message": "SMTP host or password not configured",
+        }
+    sender = sec.from_email or sec.smtp_username or "noreply@solace.local"
+    try:
+        body = MIMEText(
+            "This is a Solace Enterprise Core SMTP test message. "
+            "If you received this, outbound email is configured correctly."
+        )
+        body["Subject"] = "Solace SMTP test"
+        body["From"] = sender
+        body["To"] = to_address
+        if sec.smtp_use_tls:
+            server = smtplib.SMTP(sec.smtp_host, sec.smtp_port, timeout=15)
+            server.starttls()
+        else:
+            server = smtplib.SMTP(sec.smtp_host, sec.smtp_port, timeout=15)
+        server.login(sec.smtp_username or "", password)
+        server.sendmail(sender, [to_address], body.as_string())
+        server.quit()
+        logger.info("SMTP test email sent", extra={"to_domain": to_address.split("@")[-1]})
+        if actor_id:
+            audit_service.log_audit(
+                db,
+                "smtp",
+                "test_email_success",
+                actor_user_id=actor_id,
+                detail={"to": to_address.split("@")[-1]},
+            )
+        return {"success": True, "message": f"Test email sent to {to_address}"}
+    except Exception as exc:
+        logger.warning("SMTP test failed", extra={"error_type": type(exc).__name__})
+        if actor_id:
+            audit_service.log_audit(
+                db,
+                "smtp",
+                "test_email_failed",
+                actor_user_id=actor_id,
+                detail={"error": type(exc).__name__},
+            )
+        return {"success": False, "message": str(exc)[:200]}
+
+
 def apply_security_settings_to_runtime(db: Session) -> None:
     """Sync DB security settings into in-memory app config."""
     sec = get_or_create_security_settings(db)

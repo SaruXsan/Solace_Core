@@ -9,7 +9,7 @@ from uuid import UUID
 
 from ldap3 import ALL, Connection, Server, Tls
 from ldap3.core.exceptions import LDAPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.crypto import decrypt_value, encrypt_value, mask_secret
@@ -62,6 +62,7 @@ def directory_settings_to_dict(row: AuthDirectorySetting | None) -> dict[str, An
         "ca_chain_reference": row.ca_chain_reference,
         "connection_timeout_seconds": row.connection_timeout_seconds,
         "plain_ldap_warning_acknowledged": row.plain_ldap_warning_acknowledged,
+        "overwrite_local_on_sync": row.overwrite_local_on_sync,
         "production_warning": warning,
     }
 
@@ -114,6 +115,51 @@ def _build_server(row: AuthDirectorySetting) -> Server:
     )
 
 
+def _service_bind(row: AuthDirectorySetting) -> Connection:
+    server = _build_server(row)
+    password = ""
+    if row.encrypted_bind_password:
+        password = decrypt_value(row.encrypted_bind_password, row.password_key_id)
+    conn = Connection(
+        server,
+        user=row.bind_dn or row.bind_username,
+        password=password,
+        auto_bind=True,
+    )
+    if row.use_starttls and not row.use_ssl:
+        conn.start_tls()
+    return conn
+
+
+def _entry_attr(entry, name: str) -> str | None:
+    val = getattr(entry, name, None)
+    if val is None:
+        return None
+    if hasattr(val, "value"):
+        return str(val.value) if val.value is not None else None
+    return str(val) if val else None
+
+
+def _entry_groups(entry) -> list[str]:
+    member_of = getattr(entry, "memberOf", None)
+    if member_of is None:
+        return []
+    if hasattr(member_of, "values"):
+        return [str(v) for v in member_of.values]
+    if hasattr(member_of, "value"):
+        return [str(member_of.value)]
+    return [str(member_of)] if member_of else []
+
+
+def _username_from_entry(entry, row: AuthDirectorySetting) -> str:
+    for attr in ("sAMAccountName", "uid", "cn"):
+        v = _entry_attr(entry, attr)
+        if v:
+            return v
+    dn = str(entry.entry_dn)
+    return dn.split(",")[0].split("=")[-1] if "=" in dn else dn
+
+
 def _auth_source_label(row: AuthDirectorySetting) -> str:
     if row.directory_type.upper() == "LDAPS" or row.use_ssl:
         return "LDAPS"
@@ -152,9 +198,10 @@ def authenticate_directory_user(
         conn.unbind()
         return {
             "directory_object_id": user_dn,
-            "email": str(getattr(entry, row.email_attribute, "")) or f"{username}@local",
-            "display_name": str(getattr(entry, row.display_name_attribute, "")) or username,
+            "email": _entry_attr(entry, row.email_attribute) or f"{username}@local",
+            "display_name": _entry_attr(entry, row.display_name_attribute) or username,
             "auth_source": _auth_source_label(row),
+            "groups": _entry_groups(entry),
         }
     except LDAPException:
         logger.warning("Directory authentication failed", extra={"username": username})
@@ -200,18 +247,9 @@ def test_user_lookup(
     row = get_directory_settings(db)
     if not row or not row.host:
         raise SolaceHTTPException(400, "Directory settings not configured")
-    password = ""
-    if row.encrypted_bind_password:
-        password = decrypt_value(row.encrypted_bind_password, row.password_key_id)
     search_filter = (row.user_search_filter or "(uid={username})").format(username=username)
     try:
-        server = _build_server(row)
-        conn = Connection(
-            server,
-            user=row.bind_dn or row.bind_username,
-            password=password,
-            auto_bind=True,
-        )
+        conn = _service_bind(row)
         conn.search(row.base_dn, search_filter, attributes=["*"], size_limit=1)
         if not conn.entries:
             return {"found": False, "username": username}
@@ -221,10 +259,103 @@ def test_user_lookup(
             audit_service.log_audit(db, "ldap", "test_user_lookup", actor_user_id=actor_id)
         return {
             "found": True,
-            "username": username,
-            "email": str(getattr(entry, row.email_attribute, "")) or None,
-            "display_name": str(getattr(entry, row.display_name_attribute, "")) or None,
-            "department": str(getattr(entry, row.department_attribute, "")) or None,
+            "username": _username_from_entry(entry, row),
+            "email": _entry_attr(entry, row.email_attribute),
+            "display_name": _entry_attr(entry, row.display_name_attribute),
+            "department": _entry_attr(entry, row.department_attribute),
+            "directory_object_id": str(entry.entry_dn),
+            "groups": _entry_groups(entry),
         }
     except LDAPException as e:
         return {"found": False, "error": str(e)[:200]}
+
+
+def list_group_role_mappings(db: Session) -> list[dict[str, Any]]:
+    from app.models.auth_directory import AuthGroupRoleMapping
+    from app.models.platform import CoreRole
+
+    rows = db.scalars(select(AuthGroupRoleMapping)).all()
+    result = []
+    for m in rows:
+        role = db.get(CoreRole, m.role_id)
+        result.append(
+            {
+                "id": str(m.id),
+                "directory_group_dn": m.directory_group_dn,
+                "role_id": str(m.role_id),
+                "role_code": role.code if role else None,
+                "role_name": role.name if role else None,
+            }
+        )
+    return result
+
+
+def save_group_role_mappings(
+    db: Session, mappings: list[dict[str, Any]], actor_id: UUID | None = None
+) -> list[dict[str, Any]]:
+    from app.models.auth_directory import AuthGroupRoleMapping
+
+    db.execute(delete(AuthGroupRoleMapping))
+    for item in mappings:
+        db.add(
+            AuthGroupRoleMapping(
+                directory_group_dn=item["directory_group_dn"],
+                role_id=UUID(str(item["role_id"])),
+            )
+        )
+    db.flush()
+    if actor_id:
+        audit_service.log_config_change(
+            db, actor_id, "ldap_group_role_mapping", f"Updated {len(mappings)} mappings"
+        )
+        audit_service.log_audit(
+            db,
+            "ldap",
+            "group_role_mapping_saved",
+            actor_user_id=actor_id,
+            detail={"count": len(mappings)},
+        )
+    return list_group_role_mappings(db)
+
+
+def preview_roles_for_groups(db: Session, groups: list[str]) -> list[str]:
+    from app.models.auth_directory import AuthGroupRoleMapping
+    from app.models.platform import CoreRole
+
+    if not groups:
+        return []
+    mappings = db.scalars(select(AuthGroupRoleMapping)).all()
+    group_set = {g.lower() for g in groups}
+    role_codes: set[str] = set()
+    for m in mappings:
+        if m.directory_group_dn.lower() in group_set:
+            role = db.get(CoreRole, m.role_id)
+            if role:
+                role_codes.add(role.code)
+    return sorted(role_codes)
+
+
+def apply_group_roles_to_user(db: Session, user: CoreUser, groups: list[str]) -> list[str]:
+    from app.models.auth_directory import AuthGroupRoleMapping
+    from app.models.platform import CoreRole, CoreUserRole
+
+    row = get_directory_settings(db)
+    if user.is_admin and row and not row.overwrite_local_on_sync:
+        return []
+    mappings = db.scalars(select(AuthGroupRoleMapping)).all()
+    group_set = {g.lower() for g in groups}
+    role_ids = {
+        m.role_id for m in mappings if m.directory_group_dn.lower() in group_set
+    }
+    if not role_ids:
+        return []
+    existing = db.scalars(select(CoreUserRole).where(CoreUserRole.user_id == user.id)).all()
+    for ur in existing:
+        db.delete(ur)
+    applied: list[str] = []
+    for rid in role_ids:
+        db.add(CoreUserRole(user_id=user.id, role_id=rid))
+        role = db.get(CoreRole, rid)
+        if role:
+            applied.append(role.code)
+    return applied

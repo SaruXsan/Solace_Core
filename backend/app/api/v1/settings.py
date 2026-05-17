@@ -7,6 +7,7 @@ Legacy api/v1/ldap.py was removed (unmounted duplicate).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,13 @@ from app.schemas.settings import (
     SystemSettingsIn,
     SystemSettingsOut,
 )
-from app.services import audit_service, compliance_service, ldap_service, platform_settings_service
+from app.services import (
+    audit_service,
+    compliance_service,
+    ldap_service,
+    ldap_sync_service,
+    platform_settings_service,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -123,6 +130,79 @@ def ldap_test_user(
     admin: CoreUser = Depends(require_permission("ldap.test")),
 ):
     return ldap_service.test_user_lookup(db, body.username, actor_id=admin.id)
+
+
+class GroupRoleMappingIn(BaseModel):
+    directory_group_dn: str
+    role_id: str
+
+
+class GroupRoleMappingsIn(BaseModel):
+    mappings: list[GroupRoleMappingIn]
+
+
+class GroupRolePreviewIn(BaseModel):
+    groups: list[str]
+
+
+@router.get("/ldap/group-mappings")
+def get_ldap_group_mappings(
+    db: Session = Depends(get_configured_db),
+    _user: CoreUser = Depends(require_permission("ldap.read")),
+):
+    return ldap_service.list_group_role_mappings(db)
+
+
+@router.put("/ldap/group-mappings")
+def put_ldap_group_mappings(
+    body: GroupRoleMappingsIn,
+    db: Session = Depends(get_configured_db),
+    admin: CoreUser = Depends(require_permission("ldap.update")),
+):
+    data = [m.model_dump() for m in body.mappings]
+    result = ldap_service.save_group_role_mappings(db, data, actor_id=admin.id)
+    db.commit()
+    return result
+
+
+@router.post("/ldap/preview-roles")
+def preview_ldap_roles(
+    body: GroupRolePreviewIn,
+    db: Session = Depends(get_configured_db),
+    _user: CoreUser = Depends(require_permission("ldap.read")),
+):
+    return {"roles": ldap_service.preview_roles_for_groups(db, body.groups)}
+
+
+@router.post("/ldap/sync/preview")
+def ldap_sync_preview(
+    db: Session = Depends(get_configured_db),
+    _user: CoreUser = Depends(require_permission("ldap.sync")),
+):
+    return ldap_sync_service.preview_sync(db)
+
+
+@router.post("/ldap/sync/apply")
+def ldap_sync_apply(
+    db: Session = Depends(get_configured_db),
+    admin: CoreUser = Depends(require_permission("ldap.sync")),
+):
+    return ldap_sync_service.apply_sync(db, admin.id)
+
+
+class SmtpTestIn(BaseModel):
+    to_email: EmailStr
+
+
+@router.post("/mfa/test-smtp")
+def test_smtp(
+    body: SmtpTestIn,
+    db: Session = Depends(get_configured_db),
+    admin: CoreUser = Depends(require_permission("smtp.test")),
+):
+    result = platform_settings_service.test_smtp_email(db, body.to_email, actor_id=admin.id)
+    db.commit()
+    return result
 
 
 @router.get("/mfa", response_model=MfaSettingsOut)

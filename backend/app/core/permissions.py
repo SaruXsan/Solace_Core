@@ -12,8 +12,7 @@ from app.models.platform import CorePermission, CoreRolePermission, CoreUser, Co
 
 
 def get_user_permission_codes(db: Session, user: CoreUser) -> set[str]:
-    if user.is_admin:
-        return {"*"}
+    """Resolve permissions from roles. is_admin grants wildcard only as break-glass when no roles assigned."""
     codes: set[str] = set()
     role_ids = db.scalars(select(CoreUserRole.role_id).where(CoreUserRole.user_id == user.id)).all()
     if role_ids:
@@ -37,6 +36,8 @@ def get_user_permission_codes(db: Session, user: CoreUser) -> set[str]:
                 codes.add(perm.code)
             else:
                 codes.discard(perm.code)
+    if not codes and user.is_admin:
+        return {"*"}
     return codes
 
 

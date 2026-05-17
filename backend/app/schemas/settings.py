@@ -86,6 +86,7 @@ class LdapSettingsOut(BaseModel):
     ca_chain_reference: str | None = None
     connection_timeout_seconds: int = 10
     plain_ldap_warning_acknowledged: bool = False
+    overwrite_local_on_sync: bool = False
     production_warning: str | None = None
 
 
@@ -111,6 +112,7 @@ class LdapSettingsIn(BaseModel):
     ca_chain_reference: str | None = None
     connection_timeout_seconds: int = 10
     plain_ldap_warning_acknowledged: bool = False
+    overwrite_local_on_sync: bool = False
 
 
 class LdapUserLookupIn(BaseModel):

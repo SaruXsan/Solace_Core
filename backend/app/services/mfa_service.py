@@ -36,6 +36,8 @@ def _load_mfa_policy(db: Session) -> None:
 
 
 def user_requires_mfa(db: Session, user: CoreUser) -> bool:
+    if user.mfa_disabled_until and user.mfa_disabled_until > _utcnow():
+        return False
     _load_mfa_policy(db)
     sec = platform_settings_service.get_or_create_security_settings(db)
     if sec.enable_mfa and user.mfa_enabled:
@@ -158,20 +160,49 @@ def _send_otp_email(db: Session, to_email: str, otp: str, sec) -> None:
         logger.warning("MFA OTP email delivery failed", extra={"to": _mask_email(to_email)})
 
 
+def get_challenge_status(db: Session, challenge_id: uuid.UUID) -> dict:
+    challenge = db.get(CoreMFAChallenge, challenge_id)
+    if not challenge:
+        raise SolaceHTTPException(404, "Challenge not found", code="MFA_NO_CHALLENGE")
+    sec = platform_settings_service.get_or_create_security_settings(db)
+    cooldown_remaining = 0
+    if challenge.last_resend_at and challenge.consumed_at is None:
+        elapsed = (_utcnow() - challenge.last_resend_at).total_seconds()
+        cooldown_remaining = max(0, int(sec.resend_cooldown_seconds - elapsed))
+    attempts_remaining = max(0, challenge.max_attempts - challenge.attempts_count)
+    expired = challenge.expires_at < _utcnow()
+    return {
+        "challenge_id": str(challenge.id),
+        "destination_masked": challenge.destination_masked,
+        "expires_at": challenge.expires_at.isoformat(),
+        "expired": expired,
+        "consumed": challenge.consumed_at is not None,
+        "attempts_remaining": attempts_remaining,
+        "cooldown_seconds_remaining": cooldown_remaining,
+    }
+
+
 def verify_email_otp(
     db: Session,
     user_id: uuid.UUID,
     otp: str,
     ip: str | None = None,
+    *,
+    challenge_id: uuid.UUID | None = None,
 ) -> bool:
-    challenge = db.scalar(
-        select(CoreMFAChallenge)
-        .where(
-            CoreMFAChallenge.user_id == user_id,
-            CoreMFAChallenge.consumed_at.is_(None),
+    if challenge_id:
+        challenge = db.get(CoreMFAChallenge, challenge_id)
+        if challenge is None or challenge.user_id != user_id:
+            raise SolaceHTTPException(400, "Invalid MFA challenge", code="MFA_NO_CHALLENGE")
+    else:
+        challenge = db.scalar(
+            select(CoreMFAChallenge)
+            .where(
+                CoreMFAChallenge.user_id == user_id,
+                CoreMFAChallenge.consumed_at.is_(None),
+            )
+            .order_by(CoreMFAChallenge.created_at.desc())
         )
-        .order_by(CoreMFAChallenge.created_at.desc())
-    )
     if challenge is None:
         audit_service.log_mfa_event(db, user_id, "verify_failed", False, ip_address=ip)
         raise SolaceHTTPException(400, "No active MFA challenge", code="MFA_NO_CHALLENGE")
@@ -191,13 +222,30 @@ def verify_email_otp(
     expected = hash_otp(otp, challenge.otp_salt)
     if expected != challenge.otp_hash:
         challenge.attempts_count += 1
+        remaining = max(0, challenge.max_attempts - challenge.attempts_count)
         audit_service.log_mfa_event(
             db, user_id, "verify_failed", False, challenge_id=challenge.id, ip_address=ip
         )
-        raise SolaceHTTPException(401, "Invalid OTP", code="MFA_INVALID")
+        raise SolaceHTTPException(
+            401,
+            f"Invalid OTP ({remaining} attempts remaining)",
+            code="MFA_INVALID",
+        )
 
     challenge.consumed_at = _utcnow()
     audit_service.log_mfa_event(
         db, user_id, "verify_success", True, challenge_id=challenge.id, ip_address=ip
     )
     return True
+
+
+def resend_login_challenge(
+    db: Session, challenge_id: uuid.UUID, ip: str | None, ua: str | None
+) -> CoreMFAChallenge:
+    challenge = db.get(CoreMFAChallenge, challenge_id)
+    if not challenge or challenge.consumed_at:
+        raise SolaceHTTPException(400, "No active MFA challenge", code="MFA_NO_CHALLENGE")
+    user = db.get(CoreUser, challenge.user_id)
+    if not user:
+        raise SolaceHTTPException(404, "User not found")
+    return create_email_otp_challenge(db, user, ip, ua, is_resend=True)

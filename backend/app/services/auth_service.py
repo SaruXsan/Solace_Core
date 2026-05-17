@@ -124,6 +124,8 @@ def authenticate_user(
             CoreUser.is_active == True,  # noqa: E712
         )
     )
+    if user:
+        check_account_locked(user)
     if user and user.password_hash and not user.is_directory_user:
         try:
             return authenticate_local(db, username, password, ip_address)
@@ -157,6 +159,11 @@ def authenticate_user(
                 user.directory_source = auth_src
                 user.is_directory_user = True
                 user.directory_object_id = attrs.get("directory_object_id")
+            groups = attrs.get("groups") or []
+            if groups:
+                from app.services import ldap_service as _ldap
+
+                _ldap.apply_group_roles_to_user(db, user, groups)
             user.failed_login_count = 0
             user.locked_until = None
             user.last_login_at = _utcnow()

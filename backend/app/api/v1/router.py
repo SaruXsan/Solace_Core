@@ -11,6 +11,7 @@ from app.api.v1 import (
     modules,
     organizations,
     roles,
+    security,
     settings,
     setup,
     users,
@@ -27,6 +28,7 @@ api_router.include_router(modules.router)
 api_router.include_router(compliance.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(logs.router)
+api_router.include_router(security.router)
 api_router.include_router(organizations.router)
 api_router.include_router(memory.router)
 api_router.include_router(infra.router)

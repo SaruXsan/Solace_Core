@@ -88,6 +88,10 @@ class CoreUser(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    mfa_disabled_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    mfa_disable_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
 
 class CoreUserProfile(Base, UUIDPrimaryKeyMixin, TimestampMixin):

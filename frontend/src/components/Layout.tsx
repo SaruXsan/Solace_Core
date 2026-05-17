@@ -32,7 +32,8 @@ const NAV: NavGroup[] = [
     items: [
       { label: "LDAP / LDAPS", path: "/security/ldap", permission: "ldap.read" },
       { label: "MFA / Email OTP", path: "/security/mfa", permission: "mfa.read" },
-      { label: "Sessions / Login Attempts", path: "/security/sessions", permission: "logs.read" },
+      { label: "Sessions", path: "/security/sessions", permission: "sessions.read" },
+      { label: "Login Attempts", path: "/security/login-attempts", permission: "login_attempts.read" },
     ],
   },
   {

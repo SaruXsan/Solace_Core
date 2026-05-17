@@ -25,15 +25,38 @@ export const settingsApi = {
         method: "POST",
       }),
     testUser: (username: string) =>
-      api<Record<string, unknown>>("/settings/ldap/test-user-lookup", {
+      api<LdapUserLookupResult>("/settings/ldap/test-user-lookup", {
         method: "POST",
         body: JSON.stringify({ username }),
+      }),
+    groupMappings: {
+      list: () => api<GroupRoleMapping[]>("/settings/ldap/group-mappings"),
+      save: (mappings: { directory_group_dn: string; role_id: string }[]) =>
+        api<GroupRoleMapping[]>("/settings/ldap/group-mappings", {
+          method: "PUT",
+          body: JSON.stringify({ mappings }),
+        }),
+    },
+    previewRoles: (groups: string[]) =>
+      api<{ roles: string[] }>("/settings/ldap/preview-roles", {
+        method: "POST",
+        body: JSON.stringify({ groups }),
+      }),
+    syncPreview: () => api<LdapSyncPreview>("/settings/ldap/sync/preview", { method: "POST" }),
+    syncApply: () =>
+      api<{ success: boolean; counts: Record<string, number> }>("/settings/ldap/sync/apply", {
+        method: "POST",
       }),
   },
   mfa: {
     get: () => api<MfaSettings>("/settings/mfa"),
     put: (body: Partial<MfaSettingsInput>) =>
       api<MfaSettings>("/settings/mfa", { method: "PUT", body: JSON.stringify(body) }),
+    testSmtp: (to_email: string) =>
+      api<{ success: boolean; message: string }>("/settings/mfa/test-smtp", {
+        method: "POST",
+        body: JSON.stringify({ to_email }),
+      }),
   },
   aiProviders: {
     list: () => api<AiProvider[]>("/settings/ai-providers"),
@@ -167,7 +190,33 @@ export type LdapSettings = {
   production_warning?: string;
 };
 
-export type LdapSettingsInput = LdapSettings & { bind_password?: string };
+export type LdapSettingsInput = LdapSettings & { bind_password?: string; overwrite_local_on_sync?: boolean };
+
+export type LdapUserLookupResult = {
+  found: boolean;
+  username?: string;
+  email?: string;
+  display_name?: string;
+  department?: string;
+  directory_object_id?: string;
+  groups?: string[];
+  error?: string;
+};
+
+export type GroupRoleMapping = {
+  id: string;
+  directory_group_dn: string;
+  role_id: string;
+  role_code?: string;
+  role_name?: string;
+};
+
+export type LdapSyncPreview = {
+  created: { username: string; email?: string; roles?: string[] }[];
+  updated: { username: string; email?: string; roles?: string[] }[];
+  unchanged: { username: string }[];
+  disabled: { username: string; reason?: string }[];
+};
 
 export type MfaSettings = {
   enable_mfa: boolean;
@@ -294,4 +343,80 @@ export type EvidenceRow = {
   control_id?: string;
   digital_signature_hash: string;
   created_at: string;
+};
+
+export const securityApi = {
+  sessions: (params?: { user_id?: string; username?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.user_id) q.set("user_id", params.user_id);
+    if (params?.username) q.set("username", params.username);
+    const qs = q.toString();
+    return api<SessionRow[]>(`/security/sessions${qs ? `?${qs}` : ""}`);
+  },
+  revokeSession: (sessionId: string) =>
+    api<{ success: boolean }>(`/security/sessions/${sessionId}/revoke`, { method: "POST" }),
+  revokeAllSessions: (userId: string) =>
+    api<{ success: boolean; revoked: number }>(`/security/sessions/revoke-all/${userId}`, {
+      method: "POST",
+    }),
+  loginAttempts: (params?: {
+    username?: string;
+    success?: boolean;
+    auth_source?: string;
+    ip_address?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.username) q.set("username", params.username);
+    if (params?.success !== undefined) q.set("success", String(params.success));
+    if (params?.auth_source) q.set("auth_source", params.auth_source);
+    if (params?.ip_address) q.set("ip_address", params.ip_address);
+    const qs = q.toString();
+    return api<LoginAttemptRow[]>(`/security/login-attempts${qs ? `?${qs}` : ""}`);
+  },
+  loginTrends: (hours = 24) =>
+    api<{ hours: number; failed_by_hour: { hour: number; count: number }[] }>(
+      `/security/login-attempts/trends?hours=${hours}`
+    ),
+  unlockUser: (user_id: string) =>
+    api<{ success: boolean }>("/security/users/unlock", {
+      method: "POST",
+      body: JSON.stringify({ user_id }),
+    }),
+  mfaResetCooldown: (userId: string) =>
+    api<{ success: boolean }>(`/security/users/${userId}/mfa/reset-cooldown`, { method: "POST" }),
+  mfaClearChallenges: (userId: string) =>
+    api<{ success: boolean; cleared: number }>(`/security/users/${userId}/mfa/clear-challenges`, {
+      method: "POST",
+    }),
+  mfaTempDisable: (userId: string, hours: number, reason: string) =>
+    api<{ success: boolean }>(`/security/users/${userId}/mfa/temporary-disable`, {
+      method: "POST",
+      body: JSON.stringify({ hours, reason }),
+    }),
+  mfaRequirePrivileged: (userId: string, required: boolean) =>
+    api<{ success: boolean }>(
+      `/security/users/${userId}/mfa/require-privileged?required=${required}`,
+      { method: "POST" }
+    ),
+};
+
+export type SessionRow = {
+  id: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at?: string;
+  expires_at: string;
+};
+
+export type LoginAttemptRow = {
+  id: string;
+  username: string;
+  ip_address?: string;
+  success: boolean;
+  auth_source: string;
+  failure_reason?: string;
+  created_at?: string;
 };

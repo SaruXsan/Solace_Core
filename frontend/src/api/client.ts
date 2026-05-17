@@ -35,10 +35,30 @@ export const setupApi = {
 
 export const authApi = {
   login: (body: object) =>
-    api<{ access_token: string; mfa_required?: boolean; challenge_id?: string }>(
-      "/auth/login",
+    api<{
+      access_token: string;
+      mfa_required?: boolean;
+      challenge_id?: string;
+      destination_masked?: string;
+      expires_at?: string;
+    }>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  mfaVerify: (body: { challenge_id: string; otp: string }) =>
+    api<{ access_token: string }>("/auth/mfa/verify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  mfaResend: (body: { challenge_id: string }) =>
+    api<{ cooldown_seconds_remaining: number; expired: boolean; attempts_remaining: number }>(
+      "/auth/mfa/resend",
       { method: "POST", body: JSON.stringify(body) }
     ),
+  mfaStatus: (challengeId: string) =>
+    api<{
+      cooldown_seconds_remaining: number;
+      expired: boolean;
+      attempts_remaining: number;
+      destination_masked: string;
+    }>(`/auth/mfa/challenge/${challengeId}/status`),
   me: () =>
     api<{
       id: string;
