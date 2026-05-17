@@ -14,7 +14,7 @@ export default function SolacePersonasPage() {
   return (
     <>
       <h1 className="page-title">Solace Personas</h1>
-      <p className="status-msg">Foundation personas â€” user-scoped with conflict policy.</p>
+      <p className="status-msg">Foundation personas â€?user-scoped with conflict policy.</p>
       <div className="card">
         <table className="data-table">
           <thead><tr><th>Name</th><th>Conflict policy</th></tr></thead>

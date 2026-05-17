@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { rolesApi, type Permission, type RoleInput, type RoleRow } from "../api/platform";
 import { useAuth } from "../context/AuthContext";
 import "../components/forms.css";
@@ -42,7 +42,7 @@ export default function RolesPage() {
                 <td>{r.name}</td>
                 <td><code>{r.code}</code></td>
                 <td>{r.requires_mfa ? "Yes" : "No"}</td>
-                <td>{r.is_system_role ? <span className="badge warn">System</span> : "â€”"}</td>
+                <td>{r.is_system_role ? <span className="badge warn">System</span> : "¡ª"}</td>
                 <td>{r.permission_ids.length} assigned</td>
                 <td>
                   {can("roles.update") && (
@@ -65,7 +65,7 @@ export default function RolesPage() {
           <thead><tr><th>Code</th><th>Name</th><th>Module</th></tr></thead>
           <tbody>
             {permissions.map((p) => (
-              <tr key={p.id}><td><code>{p.code}</code></td><td>{p.name}</td><td>{p.module_code || "â€”"}</td></tr>
+              <tr key={p.id}><td><code>{p.code}</code></td><td>{p.name}</td><td>{p.module_code || "¡ª"}</td></tr>
             ))}
           </tbody>
         </table>

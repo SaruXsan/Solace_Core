@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { securityApi, usersApi, type OrgStructure, type UserInput, type UserRow } from "../api/platform";
 import { useAuth } from "../context/AuthContext";
 import "../components/forms.css";
@@ -143,7 +143,7 @@ export default function UsersPage() {
                   {can("users.update") ? (
                     <button className="btn-secondary" onClick={() => openEdit(u)}>Edit</button>
                   ) : (
-                    <span className="status-msg" title="Requires users.update">â€”</span>
+                    <span className="status-msg" title="Requires users.update">¡ª</span>
                   )}
                 </td>
               </tr>
@@ -168,14 +168,14 @@ export default function UsersPage() {
                   <div className="form-field">
                     <label>Branch</label>
                     <select value={form.branch_id || ""} onChange={(e) => setForm({ ...form, branch_id: e.target.value || undefined })}>
-                      <option value="">â€”</option>
+                      <option value="">¡ª</option>
                       {structure.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </div>
                   <div className="form-field">
                     <label>Department</label>
                     <select value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: e.target.value || undefined })}>
-                      <option value="">â€”</option>
+                      <option value="">¡ª</option>
                       {structure.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
                   </div>

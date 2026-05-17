@@ -44,6 +44,13 @@ class SolaceMemoryAtom(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantScopedMi
     claim: Mapped[str] = mapped_column(Text)
     memory_tier: Mapped[str] = mapped_column(String(32), default="ACTIVE_MEMORY")
     data_classification: Mapped[str] = mapped_column(String(32), default="INTERNAL")
+    visibility_scope: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_scope: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    included_countries: Mapped[str | None] = mapped_column(Text, nullable=True)
+    included_organizations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    classification_ceiling: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    audit_event_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    review_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     broken_link_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     cache_ttl_seconds: Mapped[int | None] = mapped_column(Integer)
 

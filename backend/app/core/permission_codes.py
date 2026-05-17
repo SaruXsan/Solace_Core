@@ -57,6 +57,12 @@ FOUNDATION_PERMISSIONS: list[tuple[str, str, str | None]] = [
     ("scopes.manage", "Manage Enterprise Scopes", "core"),
     ("user_scopes.manage", "Assign User Scopes", "core"),
     ("role_scopes.manage", "Assign Scoped Roles", "core"),
+    ("consolidation.view", "View Consolidation Scopes", "core"),
+    ("consolidation.report", "Consolidation Reporting", "core"),
+    ("consolidation.ai_summary", "Consolidation AI Summary", "core"),
+    ("consolidation.export", "Export Consolidated Data", "core"),
+    ("consolidation.view_restricted", "View Raw Restricted Consolidation Data", "core"),
+    ("consolidation.manage", "Manage Consolidation Scopes", "core"),
 ]
 
 ALL_PERMISSION_CODES: frozenset[str] = frozenset(c for c, _, _ in FOUNDATION_PERMISSIONS)
@@ -66,7 +72,7 @@ READ_ONLY_PERMISSIONS: frozenset[str] = frozenset(
 )
 
 COMPLIANCE_REVIEWER_PERMISSIONS: frozenset[str] = READ_ONLY_PERMISSIONS | frozenset(
-    {"compliance.update", "evidence.verify"}
+    {"compliance.update", "evidence.verify", "consolidation.view", "consolidation.report"}
 )
 
 SECURITY_ADMIN_PERMISSIONS: frozenset[str] = READ_ONLY_PERMISSIONS | frozenset(
@@ -101,6 +107,8 @@ SECURITY_ADMIN_PERMISSIONS: frozenset[str] = READ_ONLY_PERMISSIONS | frozenset(
         "organizations.update",
         "branches.update",
         "departments.update",
+        "consolidation.view",
+        "consolidation.manage",
     }
 )
 

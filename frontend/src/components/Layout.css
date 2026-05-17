@@ -34,6 +34,19 @@
   margin-left: 0.5rem;
 }
 
+.consolidation-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--border-subtle, #333);
+}
+
+.consolidation-label {
+  color: var(--accent-warm, #c9a227);
+}
+
 .scope-selector {
   display: flex;
   align-items: center;

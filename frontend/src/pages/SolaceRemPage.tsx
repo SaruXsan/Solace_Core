@@ -14,7 +14,7 @@ export default function SolaceRemPage() {
   return (
     <>
       <h1 className="page-title">REM Proposals</h1>
-      <p className="status-msg">Foundation REM table â€” advanced intelligence not implemented.</p>
+      <p className="status-msg">Foundation REM table â€?advanced intelligence not implemented.</p>
       <div className="card">
         <table className="data-table">
           <thead><tr><th>Type</th><th>Status</th><th>Payload</th></tr></thead>

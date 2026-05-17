@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { authApi, type ActiveScope } from "../api/client";
+import { authApi, type ActiveScope, type ConsolidationScope } from "../api/client";
 import { hasAllPermissions, hasAnyPermission, hasPermission } from "../auth/permissions";
 
 type AuthState = {
@@ -17,6 +17,8 @@ type AuthState = {
   loaded: boolean;
   activeScope: ActiveScope | null;
   availableScopes: ActiveScope[];
+  activeConsolidationScope: ConsolidationScope | null;
+  availableConsolidationScopes: ConsolidationScope[];
   refresh: () => Promise<void>;
   can: (permission: string) => boolean;
   canAny: (permissions: string[]) => boolean;
@@ -31,6 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [displayName, setDisplayName] = useState("");
   const [activeScope, setActiveScope] = useState<ActiveScope | null>(null);
   const [availableScopes, setAvailableScopes] = useState<ActiveScope[]>([]);
+  const [activeConsolidationScope, setActiveConsolidationScope] = useState<ConsolidationScope | null>(
+    null
+  );
+  const [availableConsolidationScopes, setAvailableConsolidationScopes] = useState<
+    ConsolidationScope[]
+  >([]);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -40,6 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAdmin(false);
       setActiveScope(null);
       setAvailableScopes([]);
+      setActiveConsolidationScope(null);
+      setAvailableConsolidationScopes([]);
       setLoaded(true);
       return;
     }
@@ -51,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDisplayName(me.display_name);
       setActiveScope(me.active_scope ?? null);
       setAvailableScopes(me.available_scopes ?? []);
+      setActiveConsolidationScope(me.active_consolidation_scope ?? null);
+      setAvailableConsolidationScopes(me.available_consolidation_scopes ?? []);
       localStorage.setItem("display_name", me.display_name);
     } catch {
       setPermissions([]);
@@ -71,12 +83,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loaded,
       activeScope,
       availableScopes,
+      activeConsolidationScope,
+      availableConsolidationScopes,
       refresh,
       can: (p) => hasPermission(permissions, p),
       canAny: (ps) => hasAnyPermission(permissions, ps),
       canAll: (ps) => hasAllPermissions(permissions, ps),
     }),
-    [permissions, isAdmin, displayName, loaded, activeScope, availableScopes, refresh]
+    [
+      permissions,
+      isAdmin,
+      displayName,
+      loaded,
+      activeScope,
+      availableScopes,
+      activeConsolidationScope,
+      availableConsolidationScopes,
+      refresh,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -181,6 +181,35 @@ class CoreUserScope(Base, UUIDPrimaryKeyMixin, CreatedAtMixin):
     created_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
 
+class CoreConsolidationScope(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Explicit executive consolidation authority across enterprise boundaries."""
+
+    __tablename__ = "Core_ConsolidationScopes"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("Core_Users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    country_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("Core_Countries.id"), nullable=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Organizations.id"), nullable=True
+    )
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("Core_Branches.id"), nullable=True)
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_Departments.id"), nullable=True
+    )
+    scope_level: Mapped[str] = mapped_column(String(32), nullable=False)
+    include_child_scopes: Mapped[bool] = mapped_column(Boolean, default=True)
+    allowed_modules: Mapped[str | None] = mapped_column(Text, nullable=True)
+    max_classification_allowed: Mapped[str] = mapped_column(String(32), default="Internal")
+    can_view_raw_restricted: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_use_ai_summary: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_export: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+
+
 class CoreUserProfile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "Core_UserProfiles"
 
@@ -268,6 +297,9 @@ class CoreSession(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("Core_Departments.id"), nullable=True
     )
     active_scope_type: Mapped[str] = mapped_column(String(32), default="organization", nullable=False)
+    active_consolidation_scope_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("Core_ConsolidationScopes.id"), nullable=True
+    )
     token_jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(String(512))

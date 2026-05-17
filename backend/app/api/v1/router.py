@@ -9,6 +9,7 @@ from app.api.v1 import (
     memory,
     mfa,
     modules,
+    consolidation,
     countries,
     organizations,
     scopes,
@@ -31,6 +32,7 @@ api_router.include_router(compliance.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(logs.router)
 api_router.include_router(security.router)
+api_router.include_router(consolidation.router)
 api_router.include_router(countries.router)
 api_router.include_router(organizations.router)
 api_router.include_router(scopes.router)

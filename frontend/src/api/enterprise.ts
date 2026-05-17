@@ -50,4 +50,20 @@ export const enterpriseApi = {
       api<Record<string, unknown>[]>(`/scopes/users${user_id ? `?user_id=${user_id}` : ""}`),
     assign: (body: object) => api("/scopes/users", { method: "POST", body: JSON.stringify(body) }),
   },
+  consolidationScopes: {
+    list: (user_id?: string) =>
+      api<Record<string, unknown>[]>(
+        `/consolidation/scopes${user_id ? `?user_id=${user_id}` : ""}`
+      ),
+    create: (body: object) =>
+      api<Record<string, unknown>>("/consolidation/scopes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: object) =>
+      api<Record<string, unknown>>(`/consolidation/scopes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+  },
 };

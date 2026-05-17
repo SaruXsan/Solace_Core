@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { authApi } from "../api/client";
+import ConsolidationSelector from "./ConsolidationSelector";
 import ScopeSelector from "./ScopeSelector";
 import { useAuth } from "../context/AuthContext";
 import "./Layout.css";
@@ -28,6 +29,11 @@ const NAV: NavGroup[] = [
       { label: "Branches", path: "/platform/branches", permission: "branches.read" },
       { label: "Departments", path: "/platform/departments", permission: "departments.read" },
       { label: "User Scopes", path: "/platform/user-scopes", permission: "scopes.read" },
+      {
+        label: "Consolidation Scopes",
+        path: "/platform/consolidation-scopes",
+        permission: "consolidation.view",
+      },
       { label: "Modules", path: "/platform/modules", permission: "modules.read" },
       { label: "Settings", path: "/platform/settings", permission: "settings.read" },
     ],
@@ -103,12 +109,13 @@ export default function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-brand">
-          <span className="brand-mark">◆</span>
+          <span className="brand-mark">?</span>
           <span>Solace Enterprise Core</span>
           <span className="env-badge">FOUNDATION</span>
         </div>
         <div className="topbar-right">
           <ScopeSelector />
+          <ConsolidationSelector />
           <span className="status-dot" title="System online" />
           <span className="user-label">{displayName || "User"}</span>
           <button className="btn-secondary" onClick={signOut}>

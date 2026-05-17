@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import bearer_scheme, client_ip, get_configured_db, get_current_user
+from app.models.platform import CoreConsolidationScope
 from app.core.config import settings
 from app.core.exceptions import SolaceHTTPException
 from app.core.scope_context import set_active_scope
@@ -66,10 +67,24 @@ class ActiveScopeOut(BaseModel):
     label: str | None = None
 
 
+class ConsolidationScopeOut(BaseModel):
+    id: str
+    name: str
+    scope_level: str
+    country_id: str | None = None
+    organization_id: str | None = None
+    branch_id: str | None = None
+    department_id: str | None = None
+    max_classification_allowed: str | None = None
+    label: str | None = None
+
+
 class MeResponse(UserResponse):
     setup_complete: bool = True
     active_scope: ActiveScopeOut | None = None
     available_scopes: list[ActiveScopeOut] = []
+    active_consolidation_scope: ConsolidationScopeOut | None = None
+    available_consolidation_scopes: list[ConsolidationScopeOut] = []
 
 
 class SwitchScopeIn(BaseModel):
@@ -78,6 +93,10 @@ class SwitchScopeIn(BaseModel):
     organization_id: uuid.UUID | None = None
     branch_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
+
+
+class SwitchConsolidationScopeIn(BaseModel):
+    consolidation_scope_id: uuid.UUID | None = None
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -249,16 +268,78 @@ def switch_scope(
     }
 
 
+@router.post("/switch-consolidation-scope")
+def switch_consolidation_scope(
+    body: SwitchConsolidationScopeIn,
+    request: Request,
+    db: Session = Depends(get_configured_db),
+    user: CoreUser = Depends(get_current_user),
+    creds=Depends(bearer_scheme),
+):
+    from app.services import consolidation_scope_service as css
+
+    jti = None
+    if creds and creds.credentials:
+        try:
+            jti = decode_access_token(creds.credentials).get("jti")
+        except ValueError:
+            pass
+    if not jti:
+        raise SolaceHTTPException(400, "No session token", code="NO_SESSION")
+    session = db.scalar(select(CoreSession).where(CoreSession.token_jti == jti))
+    if not session:
+        raise SolaceHTTPException(401, "Session not found", code="UNAUTHORIZED")
+    active = css.switch_consolidation_scope(
+        db,
+        user,
+        session,
+        body.consolidation_scope_id,
+        ip_address=client_ip(request),
+    )
+    db.commit()
+    if active is None:
+        return {"active_consolidation_scope": None}
+    row = db.get(CoreConsolidationScope, active.id)
+    payload = active.to_dict()
+    if row:
+        payload["name"] = row.name
+    return {"active_consolidation_scope": payload}
+
+
+@router.get("/active-consolidation-scope")
+def active_consolidation_scope(
+    db: Session = Depends(get_configured_db),
+    user: CoreUser = Depends(get_current_user),
+):
+    from app.core.consolidation_context import get_active_consolidation_scope
+    from app.services import consolidation_scope_service as css
+
+    active = get_active_consolidation_scope()
+    if active is None:
+        return {"active_consolidation_scope": None}
+    row = db.get(CoreConsolidationScope, active.id)
+    if row is None:
+        return {"active_consolidation_scope": None}
+    return {
+        "active_consolidation_scope": {
+            **css.scope_to_dict(row),
+            "label": row.name,
+        }
+    }
+
+
 @router.get("/me", response_model=MeResponse)
 def me(
     db: Session = Depends(get_configured_db),
     user: CoreUser = Depends(get_current_user),
 ) -> MeResponse:
+    from app.core.consolidation_context import get_active_consolidation_scope
     from app.core.permissions import get_user_permission_codes
     from app.core.scope_context import get_active_scope
-    from app.services import bootstrap_store, scope_service
+    from app.services import bootstrap_store, consolidation_scope_service as css, scope_service
 
     active = get_active_scope()
+    active_cons = get_active_consolidation_scope()
     perms = sorted(get_user_permission_codes(db, user, active))
     if "*" in perms:
         perms = ["*"]
@@ -295,4 +376,40 @@ def me(
             )
             for s in available
         ],
+        active_consolidation_scope=(
+            ConsolidationScopeOut(
+                id=str(active_cons.id),
+                name=db.get(CoreConsolidationScope, active_cons.id).name
+                if db.get(CoreConsolidationScope, active_cons.id)
+                else active_cons.scope_level,
+                scope_level=active_cons.scope_level,
+                country_id=str(active_cons.country_id) if active_cons.country_id else None,
+                organization_id=str(active_cons.organization_id)
+                if active_cons.organization_id
+                else None,
+                branch_id=str(active_cons.branch_id) if active_cons.branch_id else None,
+                department_id=str(active_cons.department_id) if active_cons.department_id else None,
+                max_classification_allowed=active_cons.max_classification_allowed,
+            )
+            if active_cons
+            else None
+        ),
+        available_consolidation_scopes=(
+            [
+                ConsolidationScopeOut(
+                    id=s["id"],
+                    name=s["name"],
+                    scope_level=s["scope_level"],
+                    country_id=s.get("country_id"),
+                    organization_id=s.get("organization_id"),
+                    branch_id=s.get("branch_id"),
+                    department_id=s.get("department_id"),
+                    max_classification_allowed=s.get("max_classification_allowed"),
+                    label=s.get("name"),
+                )
+                for s in css.list_available_for_user(db, user)
+            ]
+            if "consolidation.view" in perms or "*" in perms
+            else []
+        ),
     )

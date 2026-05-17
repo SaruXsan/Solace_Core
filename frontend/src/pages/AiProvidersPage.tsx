@@ -19,7 +19,7 @@ export default function AiProvidersPage() {
   return (
     <>
       <h1 className="page-title">AI Providers</h1>
-      <p className="status-msg">Foundation registry â€” OpenAI and Ollama. Advanced Solace chat not built.</p>
+      <p className="status-msg">Foundation registry â€?OpenAI and Ollama. Advanced Solace chat not built.</p>
       {can("ai_providers.read") && !can("ai_providers.update") && (
         <p className="status-msg">You have read-only access.</p>
       )}

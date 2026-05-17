@@ -12,6 +12,7 @@ export const ROUTE_PERMISSIONS: Record<string, RoutePermissionRule> = {
   "/platform/branches": "branches.read",
   "/platform/departments": "departments.read",
   "/platform/user-scopes": "scopes.read",
+  "/platform/consolidation-scopes": "consolidation.view",
   "/platform/modules": "modules.read",
   "/platform/settings": "settings.read",
   "/security/ldap": "ldap.read",

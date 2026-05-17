@@ -34,11 +34,17 @@ async def lifespan(app: FastAPI):
       with session_scope() as db:
         from app.services import permission_seed_service
 
-        from app.services import country_service, scope_service
+        from app.models.platform import CoreUser
+        from app.services import consolidation_scope_service, country_service, scope_service
+        from sqlalchemy import select
 
         permission_seed_service.ensure_rbac_for_all_orgs(db)
         country_service.seed_default_countries(db)
         scope_service.backfill_scopes_for_all_users(db)
+        for admin in db.scalars(
+            select(CoreUser).where(CoreUser.is_admin == True, CoreUser.deleted_at.is_(None))  # noqa: E712
+        ).all():
+            consolidation_scope_service.ensure_admin_default_consolidation(db, admin)
         platform_settings_service.get_or_create_security_settings(db)
         platform_settings_service.apply_security_settings_to_runtime(db)
         db.commit()

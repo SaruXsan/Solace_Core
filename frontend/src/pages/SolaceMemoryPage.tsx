@@ -26,7 +26,7 @@ export default function SolaceMemoryPage() {
   return (
     <>
       <h1 className="page-title">Solace Memory</h1>
-      <p className="status-msg">Foundation memory atoms â€” scoped to current user and organization only.</p>
+      <p className="status-msg">Foundation memory atoms â€?scoped to current user and organization only.</p>
       {msg && <p className="status-msg ok">{msg}</p>}
       <div className="card" style={{ marginBottom: "1rem" }}>
         <h3>Add atom</h3>

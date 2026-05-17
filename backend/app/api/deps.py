@@ -69,6 +69,9 @@ async def get_current_user(
         )
         set_active_scope(scope)
         set_organization_id(session.organization_id)
+        from app.services import consolidation_scope_service as css
+
+        css.load_session_consolidation(db, session)
     else:
         set_organization_id(user.organization_id)
     return user

@@ -70,8 +70,19 @@ export const authApi = {
       permissions?: string[];
       active_scope?: ActiveScope | null;
       available_scopes?: ActiveScope[];
+      active_consolidation_scope?: ConsolidationScope | null;
+      available_consolidation_scopes?: ConsolidationScope[];
     }>("/auth/me"),
   availableScopes: () => api<ActiveScope[]>("/auth/available-scopes"),
+  switchConsolidationScope: (consolidation_scope_id: string | null) =>
+    api<{ active_consolidation_scope: ConsolidationScope | null }>(
+      "/auth/switch-consolidation-scope",
+      { method: "POST", body: JSON.stringify({ consolidation_scope_id }) }
+    ),
+  activeConsolidationScope: () =>
+    api<{ active_consolidation_scope: ConsolidationScope | null }>(
+      "/auth/active-consolidation-scope"
+    ),
   switchScope: (body: {
     scope_type: string;
     country_id?: string;
@@ -92,5 +103,17 @@ export type ActiveScope = {
   organization_id?: string | null;
   branch_id?: string | null;
   department_id?: string | null;
+  label?: string | null;
+};
+
+export type ConsolidationScope = {
+  id: string;
+  name?: string;
+  scope_level: string;
+  country_id?: string | null;
+  organization_id?: string | null;
+  branch_id?: string | null;
+  department_id?: string | null;
+  max_classification_allowed?: string | null;
   label?: string | null;
 };

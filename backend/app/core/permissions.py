@@ -88,6 +88,12 @@ def user_has_any_permission(
     return any(c in user_codes for c in codes)
 
 
+def user_has_permission(
+    db: Session, user: CoreUser, code: str, active_scope: ActiveScope | None = None
+) -> bool:
+    return user_has_any_permission(db, user, code, active_scope=active_scope)
+
+
 def require_permission(db: Session, user: CoreUser, *codes: str) -> None:
     """Raise 403 if user lacks any of the required permissions."""
     if user_has_any_permission(db, user, *codes):
