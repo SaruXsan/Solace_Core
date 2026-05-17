@@ -1,0 +1,25 @@
+# Secrets & runtime
+backend/data/bootstrap.enc
+scripts/set_env.local.ps1
+scripts/set_env.local.bat
+solace key.txt
+*master*key*.txt
+backend/venv/
+**/__pycache__/
+*.pyc
+.env
+.env.*
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+*.log
+Thumbs.db
+
+# Legacy projects (keep local venv out of git)
+SOLS_V1/venv/
+Solace_Portable7.9/**/venv/
