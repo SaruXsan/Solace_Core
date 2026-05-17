@@ -2,6 +2,7 @@
 
 **Status:** Frozen — accepted 2026-05-17.  
 **Scope:** Platform foundation only — not business modules.  
+**Checkpoint commit:** `5ef1ec3`  
 **Checkpoint tag:** `FOUNDATION_V1_FROZEN`  
 **Full report:** [FOUNDATION_V1_ACCEPTANCE_REPORT.md](./FOUNDATION_V1_ACCEPTANCE_REPORT.md)
 

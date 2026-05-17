@@ -128,7 +128,10 @@ Production assets emitted to `frontend/dist/` (gitignored; rebuild after clone).
 
 | Item | Value |
 |------|--------|
-| Commit message | `Freeze Solace Enterprise Core Foundation V1` |
+| Commit | `5ef1ec3` — `Freeze Solace Enterprise Core Foundation V1` |
 | Annotated tag | `FOUNDATION_V1_FROZEN` |
 
-See repository `git log` and `git tag -l` for commit hash after checkpoint creation.
+```bat
+git show FOUNDATION_V1_FROZEN
+git checkout FOUNDATION_V1_FROZEN
+```
