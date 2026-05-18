@@ -48,9 +48,23 @@ export default function CompaniesPage() {
             type="button"
             className="btn-primary"
             onClick={async () => {
-              await enterpriseApi.companies.create({ ...form, country_id: form.country_id || null });
-              setMsg("Company created");
-              await load();
+              try {
+                const created = await enterpriseApi.companies.create({
+                  ...form,
+                  country_id: form.country_id || null,
+                });
+                setMsg("Company created");
+                setForm({ name: "", code: "", country_id: "" });
+                setCompanies((prev) => {
+                  if (prev.some((o) => o.id === created.id)) {
+                    return prev.map((o) => (o.id === created.id ? created : o));
+                  }
+                  return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+                });
+                await load();
+              } catch (e) {
+                setMsg(e instanceof Error ? e.message : "Company create failed");
+              }
             }}
           >
             Save

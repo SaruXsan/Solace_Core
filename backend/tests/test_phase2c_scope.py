@@ -163,6 +163,37 @@ class OperationalIsolationTests(unittest.TestCase):
             reset_active_scope(token)
 
 
+class CompanyRegistryListTests(unittest.TestCase):
+    def test_global_scope_user_lists_all_companies(self) -> None:
+        from app.services.organization_service import _company_list_filters
+
+        db = MagicMock()
+        user_id = uuid.uuid4()
+        db.scalar.return_value = uuid.uuid4()
+        org_filter, country_filter = _company_list_filters(db, user_id)
+        self.assertIsNone(org_filter)
+        self.assertIsNone(country_filter)
+
+    def test_org_scoped_user_lists_one_company(self) -> None:
+        from app.core.scope_context import ActiveScope, reset_active_scope, set_active_scope
+        from app.core.tenant_context import set_organization_id
+        from app.services.organization_service import _company_list_filters
+
+        org_id = uuid.uuid4()
+        db = MagicMock()
+        db.scalar.return_value = None
+        token = set_active_scope(
+            ActiveScope(SCOPE_ORGANIZATION, None, org_id, None, None)
+        )
+        set_organization_id(org_id)
+        try:
+            org_filter, country_filter = _company_list_filters(db, None)
+            self.assertEqual(org_filter, org_id)
+            self.assertIsNone(country_filter)
+        finally:
+            reset_active_scope(token)
+
+
 class TenantBypassTests(unittest.TestCase):
     def test_system_bypass_token(self) -> None:
         token = enable_system_bypass("unit-test")

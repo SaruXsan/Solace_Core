@@ -6,11 +6,12 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import SolaceHTTPException
-from app.models.platform import CoreCountry
+from app.models.base import utcnow
+from app.models.platform import CoreBranch, CoreCountry, CoreDepartment, CoreOrganization
 from app.services import audit_service
 
 
@@ -95,6 +96,99 @@ def update_country(db: Session, country_id: uuid.UUID, data: dict, actor_id: uui
     row.updated_by = actor_id
     audit_service.log_audit(db, "enterprise", "country_updated", actor_user_id=actor_id, detail={"id": str(country_id)})
     return _country_dict(row)
+
+
+def deactivate_country(
+    db: Session,
+    country_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    *,
+    cascade: bool = True,
+) -> dict[str, Any]:
+    """Disable a country and optionally cascade to companies, branches, and departments."""
+    row = db.get(CoreCountry, country_id)
+    if not row:
+        raise SolaceHTTPException(404, "Country not found")
+
+    active_orgs = db.scalar(
+        select(func.count())
+        .select_from(CoreOrganization)
+        .where(
+            CoreOrganization.country_id == country_id,
+            CoreOrganization.deleted_at.is_(None),
+            CoreOrganization.is_active == True,  # noqa: E712
+        )
+    ) or 0
+
+    if active_orgs and not cascade:
+        raise SolaceHTTPException(
+            400,
+            "Country has active companies. Disable with cascade to deactivate all related records.",
+            code="COUNTRY_HAS_DEPENDENCIES",
+        )
+
+    now = utcnow()
+    companies_disabled = 0
+    branches_disabled = 0
+    departments_disabled = 0
+
+    row.is_enabled = False
+    row.updated_by = actor_id
+
+    if cascade:
+        orgs = db.scalars(
+            select(CoreOrganization).where(
+                CoreOrganization.country_id == country_id,
+                CoreOrganization.deleted_at.is_(None),
+            )
+        ).all()
+        for org in orgs:
+            if org.is_active:
+                companies_disabled += 1
+            org.is_active = False
+            branches = db.scalars(
+                select(CoreBranch).where(
+                    CoreBranch.organization_id == org.id,
+                    CoreBranch.deleted_at.is_(None),
+                )
+            ).all()
+            for branch in branches:
+                if branch.is_active or branch.deleted_at is None:
+                    branches_disabled += 1
+                branch.is_active = False
+                branch.deleted_at = now
+            departments = db.scalars(
+                select(CoreDepartment).where(
+                    CoreDepartment.organization_id == org.id,
+                    CoreDepartment.deleted_at.is_(None),
+                )
+            ).all()
+            for dept in departments:
+                if dept.is_active or dept.deleted_at is None:
+                    departments_disabled += 1
+                dept.is_active = False
+                dept.deleted_at = now
+
+    audit_service.log_audit(
+        db,
+        "enterprise",
+        "country_deactivated",
+        actor_user_id=actor_id,
+        detail={
+            "country_id": str(country_id),
+            "cascade": cascade,
+            "companies_disabled": companies_disabled,
+            "branches_disabled": branches_disabled,
+            "departments_disabled": departments_disabled,
+        },
+    )
+    return {
+        **_country_dict(row),
+        "cascade": cascade,
+        "companies_disabled": companies_disabled,
+        "branches_disabled": branches_disabled,
+        "departments_disabled": departments_disabled,
+    }
 
 
 def seed_default_countries(db: Session) -> None:
