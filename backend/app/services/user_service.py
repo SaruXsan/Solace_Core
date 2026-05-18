@@ -35,15 +35,38 @@ def _user_to_dict(user: CoreUser, role_ids: list[uuid.UUID]) -> dict[str, Any]:
     }
 
 
-def list_users(db: Session, organization_id: uuid.UUID | None = None) -> list[dict]:
+def list_users(
+    db: Session,
+    organization_id: uuid.UUID | None = None,
+    *,
+    actor_user_id: uuid.UUID | None = None,
+) -> list[dict]:
     from app.core.scope_context import require_active_organization_id
     from app.core.tenant_context import is_system_bypass
+    from app.models.platform import CoreOrganization
+    from app.services.organization_service import _company_list_filters
 
     q = select(CoreUser).where(CoreUser.deleted_at.is_(None))
+    actor = db.get(CoreUser, actor_user_id) if actor_user_id else None
+    platform_admin = bool(actor and actor.is_admin)
+
     if organization_id:
         q = q.where(CoreUser.organization_id == organization_id)
-    elif not is_system_bypass():
-        q = q.where(CoreUser.organization_id == require_active_organization_id())
+    elif not platform_admin:
+        org_filter, country_filter = _company_list_filters(db, actor_user_id)
+        if org_filter:
+            q = q.where(CoreUser.organization_id == org_filter)
+        elif country_filter:
+            q = q.where(
+                CoreUser.organization_id.in_(
+                    select(CoreOrganization.id).where(
+                        CoreOrganization.country_id == country_filter,
+                        CoreOrganization.deleted_at.is_(None),
+                    )
+                )
+            )
+        elif not is_system_bypass():
+            q = q.where(CoreUser.organization_id == require_active_organization_id())
     users = db.scalars(q.order_by(CoreUser.username)).all()
     out = []
     for u in users:

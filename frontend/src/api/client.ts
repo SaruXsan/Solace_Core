@@ -1,5 +1,26 @@
 const API = "/api/v1";
 
+/** Turn FastAPI error bodies into a readable message. */
+export function formatApiError(data: unknown, status?: number): string {
+  if (data && typeof data === "object") {
+    const body = data as { detail?: unknown; message?: string };
+    if (typeof body.detail === "string") return body.detail;
+    if (Array.isArray(body.detail)) {
+      const parts = body.detail.map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          const loc = "loc" in item && Array.isArray(item.loc) ? item.loc.join(".") : "";
+          return loc ? `${loc}: ${String((item as { msg: string }).msg)}` : String((item as { msg: string }).msg);
+        }
+        return String(item);
+      });
+      if (parts.length) return parts.join("; ");
+    }
+    if (typeof body.message === "string") return body.message;
+  }
+  if (status === 422) return "Invalid request — check required fields.";
+  return "Request failed";
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {}
@@ -13,8 +34,7 @@ export async function api<T>(
   const res = await fetch(`${API}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : data.message;
-    throw new Error(detail || "Request failed");
+    throw new Error(formatApiError(data, res.status));
   }
   return data as T;
 }

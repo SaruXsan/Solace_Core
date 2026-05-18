@@ -44,9 +44,20 @@ export const settingsApi = {
       }),
     syncPreview: () => api<LdapSyncPreview>("/settings/ldap/sync/preview", { method: "POST" }),
     syncApply: () =>
-      api<{ success: boolean; counts: Record<string, number> }>("/settings/ldap/sync/apply", {
-        method: "POST",
-      }),
+      api<{
+        success: boolean;
+        counts: Record<string, number> & { errors?: { username: string; error: string }[] };
+        preview?: LdapSyncPreview;
+      }>("/settings/ldap/sync/apply", { method: "POST" }),
+    syncClear: () =>
+      api<{ success: boolean; removed: number }>("/settings/ldap/sync/clear", { method: "POST" }),
+    syncClearAndApply: () =>
+      api<{
+        success: boolean;
+        removed?: number;
+        counts: Record<string, number> & { errors?: { username: string; error: string }[] };
+        preview?: LdapSyncPreview;
+      }>("/settings/ldap/sync/clear-and-apply", { method: "POST" }),
   },
   mfa: {
     get: () => api<MfaSettings>("/settings/mfa"),
@@ -187,6 +198,7 @@ export type LdapSettings = {
   certificate_validation_enabled?: boolean;
   connection_timeout_seconds?: number;
   plain_ldap_warning_acknowledged?: boolean;
+  default_sync_organization_id?: string | null;
   production_warning?: string;
 };
 
@@ -212,6 +224,8 @@ export type GroupRoleMapping = {
 };
 
 export type LdapSyncPreview = {
+  directory_user_count?: number;
+  search_filter?: string;
   created: { username: string; email?: string; roles?: string[] }[];
   updated: { username: string; email?: string; roles?: string[] }[];
   unchanged: { username: string }[];

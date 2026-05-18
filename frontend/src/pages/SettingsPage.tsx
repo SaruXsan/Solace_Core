@@ -1,10 +1,126 @@
 import { useEffect, useState } from "react";
-import { rolesApi, settingsApi, type LdapSettingsInput, type MfaSettingsInput } from "../api/platform";
+import {
+  rolesApi,
+  settingsApi,
+  type LdapSettingsInput,
+  type LdapSyncPreview,
+  type MfaSettingsInput,
+} from "../api/platform";
+import { enterpriseApi, type Company } from "../api/enterprise";
 import { useAuth } from "../context/AuthContext";
 import ReadOnlyNotice from "../components/ReadOnlyNotice";
 import "../components/forms.css";
 
 type Tab = "system" | "database" | "security" | "ldap" | "mfa" | "ai" | "redaction";
+
+const LDAP_FORM_DEFAULTS: LdapSettingsInput = {
+  configured: false,
+  directory_enabled: false,
+  directory_type: "LDAPS",
+  host: "",
+  port: 636,
+  use_ssl: true,
+  use_starttls: false,
+  bind_dn: "",
+  bind_username: "",
+  bind_password: "",
+  base_dn: "",
+  user_search_filter: "(sAMAccountName={username})",
+  group_search_filter: "",
+  email_attribute: "mail",
+  display_name_attribute: "displayName",
+  department_attribute: "department",
+  certificate_validation_enabled: true,
+  connection_timeout_seconds: 10,
+  plain_ldap_warning_acknowledged: false,
+  overwrite_local_on_sync: false,
+  default_sync_organization_id: "",
+};
+
+const MFA_FORM_DEFAULTS: MfaSettingsInput = {
+  enable_mfa: false,
+  require_mfa_for_admins: true,
+  otp_expiry_minutes: 10,
+  otp_retry_limit: 5,
+  resend_cooldown_seconds: 60,
+  smtp_host: "",
+  smtp_port: 587,
+  smtp_use_tls: true,
+  smtp_username: "",
+  smtp_password: "",
+  from_email: "",
+  has_smtp_password: false,
+};
+
+/** Ensure every input is controlled (no undefined values from API). */
+function normalizeLdapSettings(raw: Partial<LdapSettingsInput>): LdapSettingsInput {
+  return {
+    ...LDAP_FORM_DEFAULTS,
+    ...raw,
+    directory_enabled: Boolean(raw.directory_enabled),
+    use_ssl: Boolean(raw.use_ssl ?? LDAP_FORM_DEFAULTS.use_ssl),
+    use_starttls: Boolean(raw.use_starttls),
+    certificate_validation_enabled: Boolean(
+      raw.certificate_validation_enabled ?? LDAP_FORM_DEFAULTS.certificate_validation_enabled
+    ),
+    plain_ldap_warning_acknowledged: Boolean(raw.plain_ldap_warning_acknowledged),
+    overwrite_local_on_sync: Boolean(raw.overwrite_local_on_sync),
+    default_sync_organization_id: raw.default_sync_organization_id ?? "",
+    host: raw.host ?? "",
+    bind_dn: raw.bind_dn ?? "",
+    bind_username: raw.bind_username ?? "",
+    bind_password: raw.bind_password ?? "",
+    base_dn: raw.base_dn ?? "",
+    group_search_filter: raw.group_search_filter ?? "",
+    user_search_filter: raw.user_search_filter ?? LDAP_FORM_DEFAULTS.user_search_filter!,
+    email_attribute: raw.email_attribute ?? "mail",
+    display_name_attribute: raw.display_name_attribute ?? LDAP_FORM_DEFAULTS.display_name_attribute!,
+    department_attribute: raw.department_attribute ?? LDAP_FORM_DEFAULTS.department_attribute!,
+    directory_type: raw.directory_type ?? LDAP_FORM_DEFAULTS.directory_type!,
+    port: Number(raw.port ?? LDAP_FORM_DEFAULTS.port),
+    connection_timeout_seconds: Number(
+      raw.connection_timeout_seconds ?? LDAP_FORM_DEFAULTS.connection_timeout_seconds
+    ),
+  };
+}
+
+function ldapPayloadForSave(form: LdapSettingsInput): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...form };
+  if (!String(form.bind_password ?? "").trim()) {
+    delete payload.bind_password;
+  }
+  if (!String(form.default_sync_organization_id ?? "").trim()) {
+    payload.default_sync_organization_id = null;
+  }
+  return payload;
+}
+
+function mfaPayloadForSave(form: MfaSettingsInput): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...form };
+  if (!String(form.smtp_password ?? "").trim()) {
+    delete payload.smtp_password;
+  }
+  return payload;
+}
+
+function normalizeMfaSettings(raw: Partial<MfaSettingsInput>): MfaSettingsInput {
+  return {
+    ...MFA_FORM_DEFAULTS,
+    ...raw,
+    enable_mfa: Boolean(raw.enable_mfa),
+    require_mfa_for_admins: Boolean(raw.require_mfa_for_admins ?? true),
+    smtp_use_tls: Boolean(raw.smtp_use_tls ?? true),
+    smtp_host: raw.smtp_host ?? "",
+    smtp_username: raw.smtp_username ?? "",
+    smtp_password: raw.smtp_password ?? "",
+    from_email: raw.from_email ?? "",
+    otp_expiry_minutes: Number(raw.otp_expiry_minutes ?? 10),
+    otp_retry_limit: Number(raw.otp_retry_limit ?? 5),
+    resend_cooldown_seconds: Number(raw.resend_cooldown_seconds ?? 60),
+    smtp_port: Number(raw.smtp_port ?? 587),
+    has_smtp_password: Boolean(raw.has_smtp_password),
+  };
+}
 
 export default function SettingsPage({ initialTab = "system" }: { initialTab?: Tab }) {
   const { can } = useAuth();
@@ -26,36 +142,15 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
     database_name?: string;
     message?: string;
   } | null>(null);
-  const [ldap, setLdap] = useState<LdapSettingsInput>({
-    configured: false,
-    directory_enabled: false,
-    directory_type: "LDAPS",
-    port: 636,
-    use_ssl: true,
-    user_search_filter: "(sAMAccountName={username})",
-    email_attribute: "mail",
-    display_name_attribute: "displayName",
-    department_attribute: "department",
-    certificate_validation_enabled: true,
-    connection_timeout_seconds: 10,
-    plain_ldap_warning_acknowledged: false,
-  });
+  const [ldap, setLdap] = useState<LdapSettingsInput>(LDAP_FORM_DEFAULTS);
+  const [syncCompanies, setSyncCompanies] = useState<Company[]>([]);
   const [ldapTestUser, setLdapTestUser] = useState("");
   const [ldapLookup, setLdapLookup] = useState<Record<string, unknown> | null>(null);
   const [groupMappings, setGroupMappings] = useState<{ directory_group_dn: string; role_id: string }[]>([]);
   const [roles, setRoles] = useState<{ id: string; code: string; name: string }[]>([]);
-  const [syncPreview, setSyncPreview] = useState<Record<string, unknown[]> | null>(null);
+  const [syncPreview, setSyncPreview] = useState<LdapSyncPreview | null>(null);
   const [smtpTestTo, setSmtpTestTo] = useState("");
-  const [mfa, setMfa] = useState<MfaSettingsInput>({
-    enable_mfa: false,
-    require_mfa_for_admins: true,
-    otp_expiry_minutes: 10,
-    otp_retry_limit: 5,
-    resend_cooldown_seconds: 60,
-    smtp_port: 587,
-    smtp_use_tls: true,
-    has_smtp_password: false,
-  });
+  const [mfa, setMfa] = useState<MfaSettingsInput>(MFA_FORM_DEFAULTS);
   const [aiProviders, setAiProviders] = useState<
     { provider_code: string; display_name: string; is_enabled: boolean; is_external: boolean }[]
   >([]);
@@ -79,8 +174,12 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
         setDbStatus(await settingsApi.database.get());
       }
       if (t === "ldap") {
-        const l = await settingsApi.ldap.get();
-        setLdap({ ...ldap, ...l, bind_password: undefined });
+        const [l, companies] = await Promise.all([
+          settingsApi.ldap.get(),
+          enterpriseApi.companies.list(),
+        ]);
+        setSyncCompanies(companies);
+        setLdap(normalizeLdapSettings({ ...l, bind_password: "" }));
         const maps = await settingsApi.ldap.groupMappings.list();
         setGroupMappings(maps.map((m) => ({ directory_group_dn: m.directory_group_dn, role_id: m.role_id })));
         const r = await rolesApi.list();
@@ -88,7 +187,7 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
       }
       if (t === "mfa") {
         const m = await settingsApi.mfa.get();
-        setMfa({ ...m, smtp_password: undefined });
+        setMfa(normalizeMfaSettings({ ...m, smtp_password: "" }));
       }
       if (t === "ai") setAiProviders(await settingsApi.aiProviders.list());
       if (t === "redaction") setRedaction(await settingsApi.redaction.list());
@@ -112,6 +211,11 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
   const roMfa = can("mfa.read") && !can("mfa.update");
   const roAi = can("ai_providers.read") && !can("ai_providers.update");
   const roRedaction = can("redaction.read") && !can("settings.update");
+  const ldapSyncReady =
+    !!ldap.directory_enabled &&
+    !!ldap.host?.trim() &&
+    !!ldap.base_dn?.trim() &&
+    !!ldap.default_sync_organization_id;
 
   return (
     <>
@@ -216,11 +320,11 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
           <fieldset disabled={roLdap} style={{ border: 0, margin: 0, padding: 0 }}>
           <div className="form-grid">
             <div className="form-field">
-              <label><input type="checkbox" checked={ldap.directory_enabled} onChange={(e) => setLdap({ ...ldap, directory_enabled: e.target.checked })} /> Directory enabled</label>
+              <label><input type="checkbox" checked={!!ldap.directory_enabled} onChange={(e) => setLdap({ ...ldap, directory_enabled: e.target.checked })} /> Directory enabled</label>
             </div>
             <div className="form-field">
               <label>Directory type</label>
-              <select value={ldap.directory_type} onChange={(e) => setLdap({ ...ldap, directory_type: e.target.value })}>
+              <select value={ldap.directory_type ?? "LDAPS"} onChange={(e) => setLdap({ ...ldap, directory_type: e.target.value })}>
                 <option value="LDAP">LDAP</option>
                 <option value="LDAPS">LDAPS</option>
                 <option value="Active Directory">Active Directory</option>
@@ -228,27 +332,41 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
             </div>
             <div className="form-field"><label>Host</label><input value={ldap.host || ""} onChange={(e) => setLdap({ ...ldap, host: e.target.value })} /></div>
             <div className="form-field"><label>Port</label><input type="number" value={ldap.port || 389} onChange={(e) => setLdap({ ...ldap, port: +e.target.value })} /></div>
-            <div className="form-field"><label><input type="checkbox" checked={ldap.use_ssl} onChange={(e) => setLdap({ ...ldap, use_ssl: e.target.checked })} /> Use SSL</label></div>
-            <div className="form-field"><label><input type="checkbox" checked={ldap.use_starttls} onChange={(e) => setLdap({ ...ldap, use_starttls: e.target.checked })} /> Use STARTTLS</label></div>
+            <div className="form-field"><label><input type="checkbox" checked={!!ldap.use_ssl} onChange={(e) => setLdap({ ...ldap, use_ssl: e.target.checked })} /> Use SSL</label></div>
+            <div className="form-field"><label><input type="checkbox" checked={!!ldap.use_starttls} onChange={(e) => setLdap({ ...ldap, use_starttls: e.target.checked })} /> Use STARTTLS</label></div>
             <div className="form-field"><label>Bind DN</label><input value={ldap.bind_dn || ""} onChange={(e) => setLdap({ ...ldap, bind_dn: e.target.value })} /></div>
             <div className="form-field"><label>Bind username</label><input value={ldap.bind_username || ""} onChange={(e) => setLdap({ ...ldap, bind_username: e.target.value })} /></div>
             <div className="form-field">
               <label>Bind password {ldap.has_bind_password && ldap.bind_password_masked ? `(stored: ${ldap.bind_password_masked})` : ""}</label>
-              <input type="password" placeholder="Leave blank to keep existing" onChange={(e) => setLdap({ ...ldap, bind_password: e.target.value })} />
+              <input
+                type="password"
+                value={ldap.bind_password ?? ""}
+                placeholder="Leave blank to keep existing"
+                onChange={(e) => setLdap({ ...ldap, bind_password: e.target.value })}
+              />
             </div>
             <div className="form-field full-width"><label>Base DN</label><input value={ldap.base_dn || ""} onChange={(e) => setLdap({ ...ldap, base_dn: e.target.value })} /></div>
-            <div className="form-field full-width"><label>User search filter</label><input value={ldap.user_search_filter || ""} onChange={(e) => setLdap({ ...ldap, user_search_filter: e.target.value })} /></div>
+            <div className="form-field full-width">
+              <label>User search filter</label>
+              <input value={ldap.user_search_filter || ""} onChange={(e) => setLdap({ ...ldap, user_search_filter: e.target.value })} />
+              <p className="status-msg" style={{ marginTop: "0.35rem" }}>
+                Use {"{username}"} for login lookup (e.g. (sAMAccountName={"{"}username{"}"})).
+                For Active Directory sync, use{" "}
+                <code>(&(objectClass=user)(objectCategory=person))</code> —{" "}
+                <code>(objectClass=person)</code> also matches computer accounts (names ending in $).
+              </p>
+            </div>
             <div className="form-field full-width"><label>Group search filter</label><input value={ldap.group_search_filter || ""} onChange={(e) => setLdap({ ...ldap, group_search_filter: e.target.value })} /></div>
             <div className="form-field"><label>Email attribute</label><input value={ldap.email_attribute || "mail"} onChange={(e) => setLdap({ ...ldap, email_attribute: e.target.value })} /></div>
             <div className="form-field"><label>Display name attribute</label><input value={ldap.display_name_attribute || ""} onChange={(e) => setLdap({ ...ldap, display_name_attribute: e.target.value })} /></div>
             <div className="form-field"><label>Department attribute</label><input value={ldap.department_attribute || ""} onChange={(e) => setLdap({ ...ldap, department_attribute: e.target.value })} /></div>
             <div className="form-field"><label>Connection timeout (s)</label><input type="number" value={ldap.connection_timeout_seconds || 10} onChange={(e) => setLdap({ ...ldap, connection_timeout_seconds: +e.target.value })} /></div>
             <div className="form-field">
-              <label><input type="checkbox" checked={ldap.certificate_validation_enabled} onChange={(e) => setLdap({ ...ldap, certificate_validation_enabled: e.target.checked })} /> Certificate validation</label>
+              <label><input type="checkbox" checked={!!ldap.certificate_validation_enabled} onChange={(e) => setLdap({ ...ldap, certificate_validation_enabled: e.target.checked })} /> Certificate validation</label>
             </div>
             {ldap.directory_type === "LDAP" && !ldap.use_ssl && (
               <div className="form-field full-width">
-                <label><input type="checkbox" checked={ldap.plain_ldap_warning_acknowledged} onChange={(e) => setLdap({ ...ldap, plain_ldap_warning_acknowledged: e.target.checked })} /> Acknowledge plain LDAP warning (non-production)</label>
+                <label><input type="checkbox" checked={!!ldap.plain_ldap_warning_acknowledged} onChange={(e) => setLdap({ ...ldap, plain_ldap_warning_acknowledged: e.target.checked })} /> Acknowledge plain LDAP warning (non-production)</label>
               </div>
             )}
           </div>
@@ -261,21 +379,44 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
             <div className="form-actions">
               {can("ldap.update") && (
                 <button className="btn-primary" onClick={async () => {
-                  const r = await settingsApi.ldap.put(ldap);
-                  if (r.warning) setErr(r.warning);
-                  else { setMsg("LDAP settings saved"); await loadTab("ldap"); }
+                  setErr("");
+                  setMsg("");
+                  try {
+                    const r = await settingsApi.ldap.put(
+                      ldapPayloadForSave(ldap) as LdapSettingsInput
+                    );
+                    if (r.warning) setErr(r.warning);
+                    else {
+                      setMsg("LDAP settings saved");
+                      await loadTab("ldap");
+                    }
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Save failed");
+                  }
                 }}>Save Settings</button>
               )}
               {can("ldap.test") && (
                 <>
                   <button className="btn-secondary" onClick={async () => {
-                    const r = await settingsApi.ldap.testConnection();
-                    setMsg(r.message + (r.warnings?.length ? ` ? ${r.warnings.join(" ")}` : ""));
+                    setErr("");
+                    try {
+                      const r = await settingsApi.ldap.testConnection();
+                      setMsg(
+                        r.message + (r.warnings?.length ? ` — ${r.warnings.join(" ")}` : "")
+                      );
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : "Connection test failed");
+                    }
                   }}>Test Connection</button>
                   <button className="btn-secondary" disabled={!ldapTestUser} onClick={async () => {
-                    const r = await settingsApi.ldap.testUser(ldapTestUser);
-                    setLdapLookup(r as Record<string, unknown>);
-                    setMsg(r.found ? "User found in directory" : "User not found");
+                    setErr("");
+                    try {
+                      const r = await settingsApi.ldap.testUser(ldapTestUser);
+                      setLdapLookup(r as Record<string, unknown>);
+                      setMsg(r.found ? "User found in directory" : "User not found");
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : "User lookup failed");
+                    }
                   }}>Test User Lookup</button>
                 </>
               )}
@@ -319,17 +460,124 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
           {can("ldap.sync") && (
             <div style={{ marginTop: "1.5rem" }}>
               <h3>Directory sync</h3>
-              <label><input type="checkbox" checked={!!ldap.overwrite_local_on_sync} onChange={(e) => setLdap({ ...ldap, overwrite_local_on_sync: e.target.checked })} /> Overwrite local users on sync</label>
+              {!ldapSyncReady && (
+                <p className="status-msg warn">
+                  Enable directory, set host and base DN, choose a sync target company, save settings,
+                  then preview/apply sync. Users are not imported automatically when LDAP is saved.
+                </p>
+              )}
+              <div className="form-field" style={{ marginTop: "0.75rem", maxWidth: "28rem" }}>
+                <label>Sync users into company</label>
+                <select
+                  value={ldap.default_sync_organization_id ?? ""}
+                  onChange={(e) =>
+                    setLdap({ ...ldap, default_sync_organization_id: e.target.value || undefined })
+                  }
+                >
+                  <option value="">— Select company —</option>
+                  {syncCompanies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label style={{ display: "block", marginTop: "0.75rem" }}>
+                <input
+                  type="checkbox"
+                  checked={!!ldap.overwrite_local_on_sync}
+                  onChange={(e) => setLdap({ ...ldap, overwrite_local_on_sync: e.target.checked })}
+                />{" "}
+                Overwrite local users on sync
+              </label>
               <div className="form-actions" style={{ marginTop: "0.5rem" }}>
-                <button className="btn-secondary" onClick={async () => {
-                  setSyncPreview(await settingsApi.ldap.syncPreview());
-                  setMsg("Sync preview ready");
+                <button type="button" className="btn-secondary" disabled={!ldapSyncReady} onClick={async () => {
+                  setErr("");
+                  try {
+                    const preview = await settingsApi.ldap.syncPreview();
+                    setSyncPreview(preview);
+                    const n = Number(preview.directory_user_count ?? 0);
+                    const created = Array.isArray(preview.created) ? preview.created.length : 0;
+                    setMsg(
+                      n === 0
+                        ? "Preview: LDAP returned 0 users — check base DN and user search filter."
+                        : `Preview: ${n} users in directory (${created} new to import).`
+                    );
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Sync preview failed");
+                  }
                 }}>Preview Sync</button>
-                <button className="btn-primary" onClick={async () => {
-                  if (!confirm("Apply directory sync?")) return;
-                  const r = await settingsApi.ldap.syncApply();
-                  setMsg(`Applied: ${JSON.stringify(r.counts)}`);
-                }}>Apply Sync</button>
+                <button type="button" className="btn-primary" disabled={!ldapSyncReady} onClick={async () => {
+                  if (!confirm("Import directory users into the database? (Preview alone does not add users.)")) return;
+                  setErr("");
+                  try {
+                    const r = await settingsApi.ldap.syncApply();
+                    const c = r.counts ?? {};
+                    const created = c.created ?? 0;
+                    const updated = c.updated ?? 0;
+                    const skipped = c.skipped ?? 0;
+                    const removed = c.removed ?? 0;
+                    setMsg(
+                      created + updated === 0
+                        ? `Apply finished (removed ${removed} stale account(s)). If none imported, restart API and use Clear & resync.`
+                        : `Imported ${created} users (${updated} updated, ${removed} removed, ${skipped} skipped).`
+                    );
+                    setSyncPreview(r.preview ?? null);
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Sync apply failed");
+                  }
+                }}>Apply Sync (import users)</button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!ldapSyncReady}
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "Remove ALL LDAP-imported users from this company? Local admin accounts are kept."
+                      )
+                    ) {
+                      return;
+                    }
+                    setErr("");
+                    try {
+                      const r = await settingsApi.ldap.syncClear();
+                      setMsg(`Cleared ${r.removed} LDAP-imported user(s). Run Apply Sync to import again.`);
+                      setSyncPreview(null);
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : "Clear failed");
+                    }
+                  }}
+                >
+                  Clear LDAP users
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!ldapSyncReady}
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "Clear all LDAP-imported users, then import again from directory (recommended after filter changes)?"
+                      )
+                    ) {
+                      return;
+                    }
+                    setErr("");
+                    try {
+                      const r = await settingsApi.ldap.syncClearAndApply();
+                      const c = r.counts ?? {};
+                      setMsg(
+                        `Clear & resync: removed ${r.removed ?? c.cleared ?? 0}, imported ${c.created ?? 0}, cleaned ${c.removed ?? 0} stale account(s).`
+                      );
+                      setSyncPreview(r.preview ?? null);
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : "Clear and resync failed");
+                    }
+                  }}
+                >
+                  Clear &amp; resync
+                </button>
               </div>
               {syncPreview && <pre style={{ marginTop: "1rem", fontSize: "0.8rem" }}>{JSON.stringify(syncPreview, null, 2)}</pre>}
             </div>
@@ -353,7 +601,12 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
             <div className="form-field"><label>SMTP username</label><input value={mfa.smtp_username || ""} onChange={(e) => setMfa({ ...mfa, smtp_username: e.target.value })} /></div>
             <div className="form-field">
               <label>SMTP password {mfa.has_smtp_password && mfa.smtp_password_masked ? `(${mfa.smtp_password_masked})` : ""}</label>
-              <input type="password" placeholder="Leave blank to keep" onChange={(e) => setMfa({ ...mfa, smtp_password: e.target.value })} />
+              <input
+                type="password"
+                value={mfa.smtp_password ?? ""}
+                placeholder="Leave blank to keep"
+                onChange={(e) => setMfa({ ...mfa, smtp_password: e.target.value })}
+              />
             </div>
             <div className="form-field"><label>From email</label><input value={mfa.from_email || ""} onChange={(e) => setMfa({ ...mfa, from_email: e.target.value })} /></div>
           </div>
@@ -361,9 +614,14 @@ export default function SettingsPage({ initialTab = "system" }: { initialTab?: T
           {!roMfa && (
             <div className="form-actions">
               <button className="btn-primary" onClick={async () => {
-                await settingsApi.mfa.put(mfa);
-                setMsg("MFA settings saved");
-                await loadTab("mfa");
+                setErr("");
+                try {
+                  await settingsApi.mfa.put(mfaPayloadForSave(mfa) as MfaSettingsInput);
+                  setMsg("MFA settings saved");
+                  await loadTab("mfa");
+                } catch (e) {
+                  setErr(e instanceof Error ? e.message : "Save failed");
+                }
               }}>Save Settings</button>
             </div>
           )}

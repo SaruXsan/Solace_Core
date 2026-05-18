@@ -104,9 +104,13 @@ def main() -> None:
         org = CoreOrganization(name=ORG_NAME, code=ORG_CODE, is_active=True)
         db.add(org)
         db.flush()
-        create_admin_user(
+        admin = create_admin_user(
             db, org.id, ADMIN_EMAIL, ADMIN_USER, ADMIN_PASS, "System Administrator"
         )
+        from app.services import scope_service
+
+        scope_service.ensure_user_default_scope(db, admin, created_by=admin.id)
+        scope_service.ensure_admin_global_scope(db, admin)
         seed_service.seed_foundation_data(db)
         sec = platform_settings_service.get_or_create_security_settings(db)
         sec.enable_mfa = False

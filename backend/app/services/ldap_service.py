@@ -63,6 +63,9 @@ def directory_settings_to_dict(row: AuthDirectorySetting | None) -> dict[str, An
         "connection_timeout_seconds": row.connection_timeout_seconds,
         "plain_ldap_warning_acknowledged": row.plain_ldap_warning_acknowledged,
         "overwrite_local_on_sync": row.overwrite_local_on_sync,
+        "default_sync_organization_id": str(row.default_sync_organization_id)
+        if row.default_sync_organization_id
+        else None,
         "production_warning": warning,
     }
 
@@ -164,6 +167,69 @@ def _auth_source_label(row: AuthDirectorySetting) -> str:
     if row.directory_type.upper() == "LDAPS" or row.use_ssl:
         return "LDAPS"
     return "LDAP"
+
+
+def _is_active_directory(row: AuthDirectorySetting) -> bool:
+    return (row.directory_type or "").upper() in ("LDAPS", "ACTIVE DIRECTORY", "AD")
+
+
+def directory_sync_search_filter(row: AuthDirectorySetting) -> str:
+    """LDAP filter for bulk directory sync (not per-user login lookup)."""
+    raw = (row.user_search_filter or "").strip()
+    ad_people = "(&(objectClass=user)(objectCategory=person))"
+    if raw and "{username}" not in raw.lower() and "{user}" not in raw.lower():
+        normalized = raw.replace(" ", "").lower()
+        # Active Directory: (objectClass=person) also matches computer accounts.
+        if _is_active_directory(row) and normalized in (
+            "(objectclass=person)",
+            "(objectclass=user)",
+        ):
+            return ad_people
+        if _is_active_directory(row) and "objectcategory=person" not in normalized:
+            return f"(&{raw}(objectClass=user)(objectCategory=person))"
+        return raw
+    if _is_active_directory(row):
+        return ad_people
+    return "(objectClass=person)"
+
+
+def is_non_interactive_directory_username(username: str | None) -> bool:
+    """True for AD computer/service accounts (e.g. HOSTNAME$)."""
+    name = (username or "").strip()
+    if not name or name.endswith("$"):
+        return True
+    return name.lower() in ("krbtgt", "guest", "defaultaccount")
+
+
+def is_interactive_directory_account(entry, username: str | None) -> bool:
+    """Exclude AD computer/service/machine accounts from user sync."""
+    if is_non_interactive_directory_username(username):
+        return False
+    name = (username or "").strip()
+
+    object_class = getattr(entry, "objectClass", None)
+    classes: list[str] = []
+    if object_class is not None:
+        if hasattr(object_class, "values"):
+            classes = [str(v).lower() for v in object_class.values]
+        elif hasattr(object_class, "value"):
+            classes = [str(object_class.value).lower()]
+        else:
+            classes = [str(object_class).lower()]
+    if "computer" in classes:
+        return False
+
+    sam_type = _entry_attr(entry, "sAMAccountType")
+    if sam_type is not None:
+        try:
+            account_type = int(sam_type)
+            # 805306368 = NORMAL_ACCOUNT; 805306369/370 = machine/trust accounts
+            if account_type != 805306368:
+                return False
+        except ValueError:
+            pass
+
+    return True
 
 
 def authenticate_directory_user(

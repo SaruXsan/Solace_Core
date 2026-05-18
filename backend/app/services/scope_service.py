@@ -354,9 +354,20 @@ def assign_user_scope(
     department_id: uuid.UUID | None = None,
     is_default: bool = False,
 ) -> dict:
+    st = (scope_type or "").strip().lower()
+    if st == SCOPE_ORGANIZATION and not organization_id:
+        raise SolaceHTTPException(400, "organization_id is required for organization scope")
+    if st == SCOPE_COUNTRY and not country_id:
+        raise SolaceHTTPException(400, "country_id is required for country scope")
+    if st == SCOPE_BRANCH and (not organization_id or not branch_id):
+        raise SolaceHTTPException(400, "organization_id and branch_id are required for branch scope")
+    if st == SCOPE_DEPARTMENT and (not organization_id or not department_id):
+        raise SolaceHTTPException(
+            400, "organization_id and department_id are required for department scope"
+        )
     scope = CoreUserScope(
         user_id=user_id,
-        scope_type=scope_type,
+        scope_type=st or scope_type,
         country_id=country_id,
         organization_id=organization_id,
         branch_id=branch_id,

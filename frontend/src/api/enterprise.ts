@@ -100,6 +100,10 @@ export const enterpriseApi = {
       api<Department>(`/organizations/departments/${id}`, { method: "DELETE" }),
   },
   userScopes: {
+    userOptions: () =>
+      api<{ id: string; username: string; display_name: string; organization_id: string }[]>(
+        "/scopes/user-options"
+      ),
     list: (user_id?: string) =>
       api<Record<string, unknown>[]>(`/scopes/users${user_id ? `?user_id=${user_id}` : ""}`),
     assign: (body: object) => api("/scopes/users", { method: "POST", body: JSON.stringify(body) }),

@@ -29,11 +29,7 @@ def list_users(
     db: Session = Depends(get_configured_db),
     user: CoreUser = Depends(require_permission("users.read")),
 ):
-    from app.core.scope_context import require_active_organization_id
-    from app.core.tenant_context import is_system_bypass
-
-    org_filter = None if is_system_bypass() else require_active_organization_id()
-    return user_service.list_users(db, org_filter)
+    return user_service.list_users(db, actor_user_id=user.id)
 
 
 @router.get("/{user_id}", response_model=UserOut)

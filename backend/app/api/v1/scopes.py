@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_configured_db, require_permission
 from app.models.platform import CoreUser, CoreUserScope
-from app.services import scope_service
+from app.services import ldap_service, scope_service, user_service
 
 router = APIRouter(prefix="/scopes", tags=["scopes"])
 
@@ -34,6 +34,26 @@ class ScopedRoleIn(BaseModel):
     organization_id: uuid.UUID | None = None
     branch_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
+
+
+@router.get("/user-options")
+def list_scope_user_options(
+    db: Session = Depends(get_configured_db),
+    user: CoreUser = Depends(require_permission("scopes.read", "user_scopes.manage")),
+):
+    """Users available for scope assignment (does not require users.read)."""
+    rows = user_service.list_users(db, actor_user_id=user.id)
+    return [
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "display_name": r["display_name"],
+            "organization_id": r["organization_id"],
+        }
+        for r in rows
+        if r.get("is_active", True)
+        and not ldap_service.is_non_interactive_directory_username(r.get("username"))
+    ]
 
 
 @router.get("/users")

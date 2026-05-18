@@ -87,6 +87,7 @@ class LdapSettingsOut(BaseModel):
     connection_timeout_seconds: int = 10
     plain_ldap_warning_acknowledged: bool = False
     overwrite_local_on_sync: bool = False
+    default_sync_organization_id: str | None = None
     production_warning: str | None = None
 
 
@@ -113,6 +114,7 @@ class LdapSettingsIn(BaseModel):
     connection_timeout_seconds: int = 10
     plain_ldap_warning_acknowledged: bool = False
     overwrite_local_on_sync: bool = False
+    default_sync_organization_id: str | None = None
 
 
 class LdapUserLookupIn(BaseModel):

@@ -187,7 +187,47 @@ def ldap_sync_apply(
     db: Session = Depends(get_configured_db),
     admin: CoreUser = Depends(require_permission("ldap.sync")),
 ):
-    return ldap_sync_service.apply_sync(db, admin.id)
+    result = ldap_sync_service.apply_sync(db, admin.id)
+    db.commit()
+    return result
+
+
+@router.post("/ldap/sync/clear")
+def ldap_sync_clear(
+    db: Session = Depends(get_configured_db),
+    admin: CoreUser = Depends(require_permission("ldap.sync")),
+):
+    org, _row = ldap_sync_service._resolve_sync_organization(db)
+    removed = ldap_sync_service.clear_imported_directory_users(db, org.id)
+    audit_service.log_admin_action(
+        db,
+        admin.id,
+        "ldap.sync_clear",
+        target_type="directory",
+        detail={"removed": removed, "organization_id": str(org.id)},
+    )
+    db.commit()
+    return {"success": True, "removed": removed}
+
+
+@router.post("/ldap/sync/clear-and-apply")
+def ldap_sync_clear_and_apply(
+    db: Session = Depends(get_configured_db),
+    admin: CoreUser = Depends(require_permission("ldap.sync")),
+):
+    org, _row = ldap_sync_service._resolve_sync_organization(db)
+    cleared = ldap_sync_service.clear_imported_directory_users(db, org.id)
+    result = ldap_sync_service.apply_sync(db, admin.id)
+    result.setdefault("counts", {})["cleared"] = cleared
+    audit_service.log_admin_action(
+        db,
+        admin.id,
+        "ldap.sync_clear_and_apply",
+        target_type="directory",
+        detail=result.get("counts"),
+    )
+    db.commit()
+    return result
 
 
 class SmtpTestIn(BaseModel):
